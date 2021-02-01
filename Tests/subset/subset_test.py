@@ -3,7 +3,9 @@ from fontTools.misc.py23 import *
 from fontTools.misc.testTools import getXML
 from fontTools import subset
 from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables import otTables as ot
 from fontTools.misc.loggingTools import CapturingLogHandler
 import difflib
 import logging
@@ -928,6 +930,168 @@ def test_subset_empty_glyf(tmp_path, ttf_path):
 
     loca = subset_font["loca"]
     assert all(loc == 0 for loc in loca)
+
+
+@pytest.fixture
+def colrv1_path(tmp_path):
+    base_glyph_names = ["uni%04X" % i for i in range(0xE000, 0xE000 + 10)]
+    layer_glyph_names = ["glyph%05d" % i for i in range(10, 20)]
+    glyph_order = [".notdef"] + base_glyph_names + layer_glyph_names
+
+    pen = TTGlyphPen(glyphSet=None)
+    pen.moveTo((0, 0))
+    pen.lineTo((0, 500))
+    pen.lineTo((500, 500))
+    pen.lineTo((500, 0))
+    pen.closePath()
+    glyph = pen.glyph()
+    glyphs = {g: glyph for g in glyph_order}
+
+    fb = FontBuilder(unitsPerEm=1024, isTTF=True)
+    fb.setupGlyphOrder(glyph_order)
+    fb.setupCharacterMap({int(name[3:], 16): name for name in base_glyph_names})
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics({g: (500, 0) for g in glyph_order})
+    fb.setupHorizontalHeader()
+    fb.setupOS2()
+    fb.setupPost()
+    fb.setupNameTable({"familyName": "TestCOLRv1", "styleName": "Regular"})
+
+    fb.setupCOLR(
+        {
+            "uniE000": [
+                {
+                    "format": int(ot.Paint.Format.PaintGlyph),
+                    "glyph": "glyph00010",
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintSolid),
+                        "paletteIndex": 0,
+                    },
+                },
+                {
+                    "format": int(ot.Paint.Format.PaintGlyph),
+                    "glyph": "glyph00011",
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintSolid),
+                        "paletteIndex": 2,
+                        "alpha": 0.3,
+                    },
+                },
+            ],
+            "uniE001": [
+                {
+                    "format": int(ot.Paint.Format.PaintTransform),
+                    "transform": (0.7071, 0.7071, -0.7071, 0.7071, 0, 0),
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintGlyph),
+                        "glyph": "glyph00012",
+                        "paint": {
+                            "format": int(ot.Paint.Format.PaintRadialGradient),
+                            "c0": (250, 250),
+                            "r0": 250,
+                            "c1": (200, 200),
+                            "r1": 0,
+                            "colorLine": {
+                                "stops": [(0.0, 0), (1.0, 1)], "extend": "repeat"
+                            },
+                        },
+                    },
+                },
+                {
+                    "format": int(ot.Paint.Format.PaintGlyph),
+                    "glyph": "glyph00013",
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintSolid),
+                        "paletteIndex": 1,
+                        "alpha": 0.5,
+                    },
+                },
+            ],
+            "uniE002": [
+                {
+                    "format": int(ot.Paint.Format.PaintGlyph),
+                    "glyph": "glyph00014",
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintLinearGradient),
+                        "p0": (0, 0),
+                        "p1": (500, 500),
+                        "colorLine": {"stops": [(0.0, 0), (1.0, 2)]},
+                    },
+                },
+                {
+                    "format": int(ot.Paint.Format.PaintTransform),
+                    "transform": (1, 0, 0, 1, 400, 400),
+                    "paint": {
+                        "format": int(ot.Paint.Format.PaintGlyph),
+                        "glyph": "glyph00015",
+                        "paint": {
+                            "format": int(ot.Paint.Format.PaintSolid),
+                            "paletteIndex": 1,
+                        },
+                    },
+                },
+            ],
+            "uniE003": {
+                "format": int(ot.Paint.Format.PaintRotate),
+                "angle": 45,
+                "centerX": 250,
+                "centerY": 250,
+                "paint": {
+                    "format": int(ot.Paint.Format.PaintColrGlyph),
+                    "glyph": "uniE001",
+                },
+            },
+        },
+    )
+    fb.setupCPAL(
+        [
+            [
+                (1.0, 0.0, 0.0, 1.0),  # red
+                (0.0, 1.0, 0.0, 1.0),  # green
+                (0.0, 0.0, 1.0, 1.0),  # blue
+            ],
+        ],
+    )
+
+    output_path = tmp_path / "TestCOLRv1.ttf"
+    fb.save(output_path)
+
+    return output_path
+
+
+def test_subset_COLRv1(colrv1_path):
+    # XXX delete me
+    import shutil; shutil.copy(colrv1_path, "/tmp/test-colrv1.ttf")
+
+    subset_path = colrv1_path.parent / (colrv1_path.name + ".subset")
+
+    subset.main(
+        [
+            str(colrv1_path),
+            "--glyph-names",
+            f"--output-file={subset_path}",
+            "--unicodes=E002,E003",
+        ]
+    )
+    subset_font = TTFont(subset_path)
+
+    glyph_set = set(subset_font.getGlyphOrder())
+
+    # uniE000 and its children are excluded from subset
+    assert "uniE000" not in glyph_set
+    assert "glyph00010" not in glyph_set
+    assert "glyph00011" not in glyph_set
+
+    # uniE001 and children are pulled in indirectly as PaintColrGlyph by uniE003
+    assert "uniE001" in glyph_set
+    assert "glyph00012" in glyph_set
+    assert "glyph00013" in glyph_set
+
+    assert "uniE002" in glyph_set
+    assert "glyph00014" in glyph_set
+    assert "glyph00015" in glyph_set
+
+    assert "uniE003" in glyph_set
 
 
 if __name__ == "__main__":
