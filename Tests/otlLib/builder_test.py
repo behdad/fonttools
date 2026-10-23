@@ -14,6 +14,86 @@ class ExtendedGlyphMap(dict):
         return 0x10001
 
 
+@pytest.mark.parametrize("extension", [False, True])
+@pytest.mark.parametrize(
+    "pairs,smaller",
+    [
+        (
+            [(i, i + 100) for i in range(1, 26)]
+            + [(40 + i * 10, 201 + i * 101) for i in range(5)],
+            True,
+        ),
+        ([(i, i + (100 if i % 2 else 200)) for i in range(1, 13)], False),
+        (
+            [(i, i + 100) for i in range(1, 5)] + [(i, i + 200) for i in range(10, 14)],
+            True,
+        ),
+        ([(0xFFF8 + i, i) for i in range(8)] + [(1, 100)], True),
+        (
+            [(i, i + 70000) for i in range(1, 9)]
+            + [(i, i + 100) for i in range(20, 28)],
+            True,
+        ),
+        (
+            [(i, i + 100) for i in range(70000, 70006)]
+            + [(i, i + 200) for i in range(70010, 70016)],
+            True,
+        ),
+        ([(70000 + i, i + 1) for i in range(8)] + [(70010, 100)], True),
+        ([(70000 + i, 71000 + i + i // 10) for i in range(30000)], False),
+    ],
+)
+def test_single_subst_compact_roundtrip(pairs, smaller, extension):
+    font = ttLib.TTFont()
+    glyphs = [f"g{i}" for i in range(max(max(pair) for pair in pairs) + 1)]
+    font.setGlyphOrder(glyphs)
+    mapping = {glyphs[source]: glyphs[target] for source, target in pairs}
+    lookup_builder = builder.SingleSubstBuilder(font, None)
+    lookup_builder.extension = extension
+    lookup_builder.mapping.update(mapping)
+    lookup = lookup_builder.build()
+    unoptimized = builder.buildLookup(
+        [builder.buildSingleSubstSubtable(mapping)], table="GSUB", extension=extension
+    )
+    writer = OTTableWriter(tableTag="GSUB")
+    unoptimized.compile(writer, font)
+    unoptimized_data = writer.getAllData()
+    writer = OTTableWriter(tableTag="GSUB")
+    lookup.compile(writer, font)
+    data = writer.getAllData()
+    reloaded = otTables.Lookup()
+    reloaded.decompile(OTTableReader(data, tableTag="GSUB"), font)
+    actual = {}
+    for subtable in reloaded.SubTable:
+        if extension:
+            subtable = subtable.ExtSubTable
+        for source, target in subtable.mapping.items():
+            actual.setdefault(source, target)
+    assert actual == mapping
+    assert len(data) <= len(unoptimized_data)
+    if smaller and not extension:
+        assert len(data) < len(unoptimized_data)
+
+
+def test_single_subst_preserves_explicit_subtable_break():
+    font = ttLib.TTFont()
+    glyphs = [f"g{i}" for i in range(128)]
+    font.setGlyphOrder(glyphs)
+    groups = [
+        {glyphs[i]: glyphs[i + 100] for i in range(1, 9)},
+        {glyphs[i]: glyphs[i + 100] for i in range(20, 28)},
+    ]
+    lookup_builder = builder.SingleSubstBuilder(font, None)
+    lookup_builder.mapping.update(groups[0])
+    lookup_builder.add_subtable_break(None)
+    lookup_builder.mapping.update(groups[1])
+    writer = OTTableWriter(tableTag="GSUB")
+    lookup_builder.build().compile(writer, font)
+    reloaded = otTables.Lookup()
+    reloaded.decompile(OTTableReader(writer.getAllData(), tableTag="GSUB"), font)
+    assert [subtable.mapping for subtable in reloaded.SubTable] == groups
+
+
 class BuilderTest(object):
     GLYPHS = (
         ".notdef space zero one two three four five six "

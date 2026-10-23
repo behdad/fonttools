@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple, OrderedDict, defaultdict
 import itertools
 from typing import Dict, Union
 from fontTools.misc.fixedTools import fixedToFloat
@@ -1630,13 +1630,20 @@ class SingleSubstBuilder(LookupBuilder):
         return LookupBuilder.equals(self, other) and self.mapping == other.mapping
 
     def build(self):
-        """Build the lookup.
+        """Build the lookup, choosing compact delta and explicit-mapping subtables.
 
         Returns:
-            An ``otTables.Lookup`` object representing the multiple
+            An ``otTables.Lookup`` object representing the single
             substitution lookup.
         """
-        subtables = self.build_subst_subtables(self.mapping, buildSingleSubstSubtable)
+        subtables = []
+        for subtable in self.build_subst_subtables(
+            self.mapping, buildSingleSubstSubtable
+        ):
+            if subtable is not None:
+                subtables.extend(
+                    _splitSingleSubstSubtable(subtable, self.font, self.extension)
+                )
         return self.buildLookup_(subtables)
 
     def getAlternateGlyphs(self):
@@ -2023,6 +2030,81 @@ def buildSingleSubstSubtable(mapping):
     self = ot.SingleSubst()
     self.mapping = dict(mapping)
     return self
+
+
+def _singleSubstSize(rows, extended, offsetSize):
+    """Size of a sorted mapping, including lookup offset and extension wrapper."""
+    count = len(rows)
+    wide = extended and (
+        count > 0xFFFF or any(a > 0xFFFF or b > 0xFFFF for a, b, _, _ in rows)
+    )
+    width = 3 if wide else 2
+    modulus = 0x1000000 if wide else 0x10000
+    delta = (rows[0][1] - rows[0][0]) % modulus
+    constant = all((a + delta) % modulus == b for a, b, _, _ in rows)
+    coverageWidth = 3 if extended and (count > 0xFFFF or rows[-1][0] > 0xFFFF) else 2
+    ranges = 1 + sum(b[0] != a[0] + 1 for a, b in itertools.pairwise(rows))
+    coverageSize = 2 + coverageWidth * (1 + min(count, 3 * ranges))
+    return offsetSize + 3 * width + coverageSize + (0 if constant else width * count)
+
+
+def _splitSingleSubstSubtable(subtable, font, extension):
+    mapping = subtable.mapping
+    if len(mapping) < 2:
+        return [subtable]
+    getGlyphID = font.getGlyphID
+    extended = font.hasExtendedGlyphIDs()
+    if not extended:
+        first, replacement = next(iter(mapping.items()))
+        delta = (getGlyphID(replacement) - getGlyphID(first)) % 0x10000
+        if all(
+            (getGlyphID(a) + delta) % 0x10000 == getGlyphID(b)
+            for a, b in mapping.items()
+        ):
+            return [subtable]
+    rows = sorted((getGlyphID(a), getGlyphID(b), a, b) for a, b in mapping.items())
+    wide = extended and (
+        len(rows) > 0xFFFF or any(a > 0xFFFF or b > 0xFFFF for a, b, _, _ in rows)
+    )
+    modulus = 0x1000000 if wide else 0x10000
+    groups = defaultdict(list)
+    for row in rows:
+        delta = (row[1] - row[0]) % modulus
+        groups[delta].append(row)
+    if len(groups) == 1 or all(len(group) == 1 for group in groups.values()):
+        return [subtable]
+
+    offsetSize = 10 if extension else 2
+    bestSize = _singleSubstSize(rows, extended, offsetSize)
+    bestGroups = None
+    sizes = {
+        delta: _singleSubstSize(group, extended, offsetSize)
+        for delta, group in groups.items()
+    }
+    size = sum(sizes.values())
+    if size < bestSize:
+        bestSize = size
+        bestGroups = list(groups.values())
+
+    # A new delta subtable costs at least twelve bytes. Keep the small
+    # delta groups together when their explicit substitutes are cheaper.
+    large = [group for group in groups.values() if len(group) >= 6]
+    if large and len(large) != len(groups):
+        small = [row for row in rows if len(groups[(row[1] - row[0]) % modulus]) < 6]
+        size = sum(sizes[delta] for delta, group in groups.items() if len(group) >= 6)
+        size += _singleSubstSize(small, extended, offsetSize)
+        if size < bestSize:
+            bestSize = size
+            bestGroups = large + [small]
+
+    # Leave oversized lookups to the existing overflow repair, rather than
+    # introducing subtable offsets that no longer fit in sixteen bits.
+    if bestGroups is None or bestSize > 0xFFFF - 8:
+        return [subtable]
+    bestGroups.sort(key=lambda group: (-len(group), group[0][0]))
+    return [
+        buildSingleSubstSubtable({a: b for _, _, a, b in group}) for group in bestGroups
+    ]
 
 
 def buildMultipleSubstSubtable(mapping):

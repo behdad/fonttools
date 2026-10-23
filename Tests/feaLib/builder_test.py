@@ -11,6 +11,7 @@ from fontTools.feaLib import ast
 from fontTools.feaLib.lexer import Lexer
 from fontTools.fontBuilder import FontBuilder, addFvar
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.otlLib.builder import buildSingleSubstSubtable
 import difflib
 from io import StringIO
 from textwrap import dedent
@@ -81,7 +82,7 @@ class BuilderTest(unittest.TestCase):
         GPOS_1 GPOS_1_zero GPOS_2 GPOS_2b GPOS_3 GPOS_4 GPOS_5 GPOS_6 GPOS_8
         GSUB_2 GSUB_3 GSUB_6 GSUB_8
         spec4h1 spec4h2 spec5d1 spec5d2 spec5fi1 spec5fi2 spec5fi3 spec5fi4
-        spec5f_ii_1 spec5f_ii_2 spec5f_ii_3 spec5f_ii_4
+        spec5f_ii_1 spec5f_ii_2 spec5f_ii_3
         spec5h1 spec6b_ii spec6d2 spec6e spec6f
         spec6h_ii spec6h_iii_1 spec6h_iii_3d spec8a spec8a_2 spec8b spec8c spec8d
         spec9a spec9a2 spec9b spec9c1 spec9c2 spec9c3 spec9d spec9e spec9f
@@ -269,6 +270,34 @@ class BuilderTest(unittest.TestCase):
         self.assertIsNotNone(table.LigCaretList2)
         self.assertIsNotNone(table.MarkAttachClassDef2)
         self.assertIsNotNone(table.MarkGlyphSetsDef2)
+
+    def test_spec5f_ii_4_compact_single_subst(self):
+        font = makeTTFont()
+        addOpenTypeFeatures(font, self.getpath("spec5f_ii_4.fea"))
+        data = font["GSUB"].compile(font)
+        reloaded = newTable("GSUB")
+        reloaded.decompile(data, font)
+        expected = {glyph: glyph + ".swash" for glyph in "ABCDEFGHIJKLMNPQRSTUVWXYZ"}
+        expected.update(
+            {
+                "T_h": "T_h.swash",
+                "m": "m.begin",
+                "a": "a.end",
+                "e": "e.end",
+                "z": "z.end",
+            }
+        )
+        actual = {}
+        for lookup in reloaded.table.LookupList.Lookup:
+            if lookup.LookupType != 1:
+                continue
+            for subtable in lookup.SubTable:
+                for source, target in subtable.mapping.items():
+                    actual.setdefault(source, target)
+            lookup.SubTable = [buildSingleSubstSubtable(actual)]
+            lookup.SubTableCount = 1
+        self.assertEqual(actual, expected)
+        self.assertLess(len(data), len(reloaded.compile(font)))
 
     def check_feature_file(self, name):
         font = makeTTFont()
