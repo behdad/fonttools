@@ -5,6 +5,7 @@ from fontTools.misc.testTools import getXML
 from fontTools.otlLib import builder, error
 from fontTools import ttLib
 from fontTools.ttLib.tables import otTables
+from fontTools.ttLib.tables.otBase import OTTableReader, OTTableWriter
 import pytest
 
 
@@ -954,6 +955,98 @@ class BuilderTest(object):
             ExtendedGlyphMap(self.GLYPHMAP),
         )
         assert subtable.Format == 4
+
+    @pytest.mark.parametrize("wide", [False, True])
+    @pytest.mark.parametrize("extension", [False, True])
+    @pytest.mark.parametrize(
+        "rules,expected",
+        [
+            (
+                [(("a",), ("b",), -50), (("a", "aacute"), ("c",), -100)],
+                {
+                    ("a", "b"): -50,
+                    ("a", "c"): -100,
+                    ("aacute", "c"): -100,
+                    ("aacute", "b"): 0,
+                },
+            ),
+            (
+                [(("a",), ("b", "c"), -50), (("a",), ("c", "d"), -100)],
+                {("a", "b"): -50, ("a", "c"): -50, ("a", "d"): -100},
+            ),
+            (
+                [(("a", "aacute"), ("b", "c"), -50), (("a", "x"), ("c", "d"), -100)],
+                {("a", "c"): -50, ("a", "d"): -100, ("x", "c"): -100, ("x", "b"): 0},
+            ),
+            (
+                [(("a",), ("b",), -50), (("a",), ("b",), -100)],
+                {("a", "b"): -100},
+            ),
+            (
+                [
+                    (("a",), ("b",), -50),
+                    (("a", "aacute"), ("b", "c"), -100),
+                    (("a",), ("b",), -150),
+                ],
+                {("a", "b"): -50, ("a", "c"): -100, ("aacute", "b"): -100},
+            ),
+            (
+                [(("a",), ("b",), -50), None, (("a", "aacute"), ("c",), -100)],
+                {("a", "b"): -50, ("a", "c"): 0, ("aacute", "c"): -100},
+            ),
+            (
+                [
+                    (("a",), ("b", "c"), -30),
+                    (("d",), ("c", "x"), -60),
+                    (("a", "aacute"), ("x",), -90),
+                ],
+                {
+                    ("a", "c"): -30,
+                    ("a", "x"): -90,
+                    ("d", "c"): -60,
+                    ("d", "x"): -60,
+                    ("aacute", "x"): -90,
+                },
+            ),
+        ],
+    )
+    def test_class_pair_overlap_roundtrip(self, rules, expected, extension, wide):
+        font = ttLib.TTFont()
+        glyphs = [".notdef"]
+        if wide:
+            glyphs.extend(f"padding{i}" for i in range(0x10000))
+        glyphs.extend(["a", "aacute", "b", "c", "d", "x"])
+        font.setGlyphOrder(glyphs)
+        lookup_builder = builder.PairPosBuilder(font, None)
+        subtable_builder = builder.ClassPairPosSubtableBuilder(lookup_builder)
+        for rule in rules:
+            if rule is None:
+                subtable_builder.addSubtableBreak()
+                continue
+            left, right, advance = rule
+            subtable_builder.addPair(
+                left, builder.buildValue({"XAdvance": advance}), right, None
+            )
+        lookup = builder.buildLookup(
+            subtable_builder.subtables(), table="GPOS", extension=extension
+        )
+        writer = OTTableWriter(tableTag="GPOS")
+        lookup.compile(writer, font)
+        reloaded = otTables.Lookup()
+        reloaded.decompile(OTTableReader(writer.getAllData(), tableTag="GPOS"), font)
+        for (left, right), advance in expected.items():
+            actual = 0
+            for subtable in reloaded.SubTable:
+                if extension:
+                    subtable = subtable.ExtSubTable
+                if left not in subtable.Coverage.glyphs:
+                    continue
+                row = subtable.ClassDef1.classDefs.get(left, 0)
+                column = subtable.ClassDef2.classDefs.get(right, 0)
+                value = subtable.Class1Record[row].Class2Record[column].Value1
+                actual = getattr(value, "XAdvance", 0)
+                break
+            assert actual == advance, (left, right)
 
     def test_buildPairPosGlyphs(self):
         d50 = builder.buildValue({"XPlacement": -50})
