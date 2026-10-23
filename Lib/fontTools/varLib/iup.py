@@ -12,6 +12,11 @@ from typing import (
 )
 from numbers import Integral, Real
 
+if cython.compiled:
+    from cython.cimports.libc.math import floor
+else:
+    from math import floor
+
 _Point = Tuple[Real, Real]
 _Delta = Tuple[Real, Real]
 _PointSegment = Sequence[_Point]
@@ -25,6 +30,14 @@ MAX_LOOKBACK = 8
 
 
 @cython.cfunc
+@cython.inline
+@cython.returns(cython.int)
+@cython.locals(a=cython.double, b=cython.double)
+def _iup_round_equal(a, b):
+    return abs(a - b) <= 1 and floor(a + 0.5) == floor(b + 0.5)
+
+
+@cython.cfunc
 @cython.locals(
     j=cython.int,
     n=cython.int,
@@ -35,13 +48,24 @@ MAX_LOOKBACK = 8
     scale=cython.double,
     x=cython.double,
     d=cython.double,
+    round_equality=cython.int,
 )
 def iup_segment(
-    coords: _PointSegment, rc1: _Point, rd1: _Delta, rc2: _Point, rd2: _Delta
+    coords: _PointSegment,
+    rc1: _Point,
+    rd1: _Delta,
+    rc2: _Point,
+    rd2: _Delta,
+    round_equality,
 ):  # -> _DeltaSegment:
     """Given two reference coordinates `rc1` & `rc2` and their respective
     delta vectors `rd1` & `rd2`, returns interpolated deltas for the set of
-    coordinates `coords`."""
+    coordinates `coords`.
+
+    Optimization compares equality after OpenType rounding. Normal inference
+    may receive scaled deltas and must use exact equality. Neither mode rounds
+    the values used for interpolation.
+    """
 
     # rc1 = reference coord 1
     # rd1 = reference delta 1
@@ -50,9 +74,15 @@ def iup_segment(
         out_arrays[j] = out = []
         x1, x2, d1, d2 = rc1[j], rc2[j], rd1[j], rd2[j]
 
-        if x1 == x2:
+        if x1 == x2 or (
+            round_equality and abs(x1 - x2) <= 1 and floor(x1 + 0.5) == floor(x2 + 0.5)
+        ):
             n = len(coords)
-            if d1 == d2:
+            if d1 == d2 or (
+                round_equality
+                and abs(d1 - d2) <= 1
+                and floor(d1 + 0.5) == floor(d2 + 0.5)
+            ):
                 out.extend([d1] * n)
             else:
                 out.extend([0] * n)
@@ -112,7 +142,7 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
         i1, i2, ri1, ri2 = 0, start, start, indices[-1]
         out.extend(
             iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
+                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2], False
             )
         )
     out.append(deltas[start])
@@ -121,7 +151,12 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
             i1, i2, ri1, ri2 = start + 1, end, start, end
             out.extend(
                 iup_segment(
-                    coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
+                    coords[i1:i2],
+                    coords[ri1],
+                    deltas[ri1],
+                    coords[ri2],
+                    deltas[ri2],
+                    False,
                 )
             )
         out.append(deltas[end])
@@ -131,7 +166,7 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
         i1, i2, ri1, ri2 = start + 1, n, start, indices[0]
         out.extend(
             iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
+                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2], False
             )
         )
 
@@ -189,7 +224,9 @@ def can_iup_in_between(
     provided error tolerance."""
 
     assert j - i >= 2
-    interp = iup_segment(coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j])
+    interp = iup_segment(
+        coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j], True
+    )
     deltas = deltas[i + 1 : j]
 
     return all(
@@ -245,13 +282,17 @@ def _iup_contour_bound_forced_set(
 
             force = False
 
-            # If the two coordinates are the same, then the interpolation
+            # If the two coordinates round to the same value, then the interpolation
             # algorithm produces the same delta if both deltas are equal,
             # and zero if they differ.
             #
             # This test has to be before the next one.
-            if c1 == c2:
-                if abs(d1 - d2) > tolerance and abs(dj) > tolerance:
+            if c1 == c2 or (abs(c1 - c2) <= 1 and floor(c1 + 0.5) == floor(c2 + 0.5)):
+                if (
+                    abs(d1 - d2) > tolerance
+                    and (abs(d1 - d2) > 1 or floor(d1 + 0.5) != floor(d2 + 0.5))
+                    and abs(dj) > tolerance
+                ):
                     force = True
 
             # If coordinate for current point is between coordinate of adjacent
@@ -266,7 +307,9 @@ def _iup_contour_bound_forced_set(
             # Otherwise, the delta should either match the closest, or have the
             # same sign as the interpolation of the two deltas.
             else:  # cj < c1 or c2 < cj
-                if d1 != d2:
+                if d1 != d2 and (
+                    abs(d1 - d2) > 1 or floor(d1 + 0.5) != floor(d2 + 0.5)
+                ):
                     if cj < c1:
                         if (
                             abs(dj) > tolerance
@@ -367,6 +410,9 @@ def iup_contour_optimize(
 
     Returns delta vector that has most number of None items instead of
     the input delta.
+
+    Equality checks use OpenType-rounded coordinates and deltas. Interpolation
+    and error tolerance calculations retain the input fractional values.
     """
 
     n = len(deltas)
@@ -381,9 +427,13 @@ def iup_contour_optimize(
     if n == 1:
         return deltas
 
-    # If all deltas are exactly the same, return just one (the first one):
+    # If all deltas round to the same values, return just one (the first one):
     d0 = deltas[0]
-    if all(d0 == d for d in deltas):
+    if all(d0 == d for d in deltas) or all(
+        (d0[0] == d[0] or _iup_round_equal(d0[0], d[0]))
+        and (d0[1] == d[1] or _iup_round_equal(d0[1], d[1]))
+        for d in deltas
+    ):
         return [d0] + [None] * (n - 1)
 
     # Else, solve the general problem using Dynamic Programming.
