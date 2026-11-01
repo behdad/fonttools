@@ -2,6 +2,21 @@
 #
 # Google Author(s): Behdad Esfahbod, Roozbeh Pournader
 
+"""Merge multiple fonts into one.
+
+usage: fonttools merge [font1 ... fontN] [--input-file=filelist.txt] [--output-file=merged.ttf] [--import-file=tables.ttx]
+                                   [--drop-tables=tags] [--verbose] [--timing]
+
+ font1 ... fontN              Files to merge.
+ --input-file=<filename>      Read files to merge from a text file, each path new line. # Comment lines allowed.
+ --output-file=<filename>     Specify output file name (default: merged.ttf).
+ --import-file=<filename>     TTX file to import after merging. This can be used to set metadata.
+ --drop-tables=<table tags>   Comma separated list of table tags to skip, case sensitive.
+ --verbose                    Output progress information.
+ --timing                     Output progress timing.
+ -h, --help                   Show this help message and exit.
+"""
+
 from fontTools import ttLib
 import fontTools.merge.base
 from fontTools.merge.cmap import (
@@ -231,6 +246,10 @@ def main(args=None):
     if args is None:
         args = sys.argv[1:]
 
+    if "--help" in args or "-h" in args:
+        print(__doc__)
+        return 0
+
     options = Options()
     args = options.parse_opts(args)
     fontfiles = []
@@ -245,37 +264,7 @@ def main(args=None):
         fontfiles.append(g)
 
     if len(fontfiles) < 1:
-        print(
-            "usage: fonttools merge [font1 ... fontN] [--input-file=filelist.txt] [--output-file=merged.ttf] [--import-file=tables.ttx]",
-            file=sys.stderr,
-        )
-        print(
-            "                                   [--drop-tables=tags] [--verbose] [--timing]",
-            file=sys.stderr,
-        )
-        print("", file=sys.stderr)
-        print(" font1 ... fontN              Files to merge.", file=sys.stderr)
-        print(
-            " --input-file=<filename>      Read files to merge from a text file, each path new line. # Comment lines allowed.",
-            file=sys.stderr,
-        )
-        print(
-            " --output-file=<filename>     Specify output file name (default: merged.ttf).",
-            file=sys.stderr,
-        )
-        print(
-            " --import-file=<filename>     TTX file to import after merging. This can be used to set metadata.",
-            file=sys.stderr,
-        )
-        print(
-            " --drop-tables=<table tags>   Comma separated list of table tags to skip, case sensitive.",
-            file=sys.stderr,
-        )
-        print(
-            " --verbose                    Output progress information.",
-            file=sys.stderr,
-        )
-        print(" --timing                     Output progress timing.", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
         return 1
 
     configLogger(level=logging.INFO if options.verbose else logging.WARNING)
