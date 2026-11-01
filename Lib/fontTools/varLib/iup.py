@@ -12,6 +12,11 @@ from typing import (
 )
 from numbers import Integral, Real
 
+if cython.compiled:
+    from cython.cimports.libc.math import floor
+else:
+    from math import floor
+
 _Point = Tuple[Real, Real]
 _Delta = Tuple[Real, Real]
 _PointSegment = Sequence[_Point]
@@ -166,6 +171,17 @@ def iup_delta(
 
 
 @cython.cfunc
+@cython.locals(x=cython.double, y=cython.double)
+def _iup_round_points(points):
+    # Reuse integer-valued input, which is the usual case. Prepare rounded
+    # coordinates and deltas once per contour, outside the DP inner loop.
+    for x, y in points:
+        if x != floor(x) or y != floor(y):
+            return [(floor(x + 0.5), floor(y + 0.5)) for x, y in points]
+    return points
+
+
+@cython.cfunc
 @cython.inline
 @cython.locals(
     i=cython.int,
@@ -183,6 +199,8 @@ def can_iup_in_between(
     i: Integral,
     j: Integral,
     tolerance: Real,
+    rounded_deltas=None,
+    rounded_coords=None,
 ):  # -> bool:
     """Return true if the deltas for points at `i` and `j` (`i < j`) can be
     successfully used to interpolate deltas for points in between them within
@@ -190,11 +208,24 @@ def can_iup_in_between(
 
     assert j - i >= 2
     interp = iup_segment(coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j])
-    deltas = deltas[i + 1 : j]
+    if not all(
+        abs(complex(x - p, y - q)) <= tolerance
+        for (x, y), (p, q) in zip(deltas[i + 1 : j], interp)
+    ):
+        return False
+    if rounded_deltas is None:
+        return True
 
+    interp = iup_segment(
+        rounded_coords[i + 1 : j],
+        rounded_coords[i],
+        rounded_deltas[i],
+        rounded_coords[j],
+        rounded_deltas[j],
+    )
     return all(
         abs(complex(x - p, y - q)) <= tolerance
-        for (x, y), (p, q) in zip(deltas, interp)
+        for (x, y), (p, q) in zip(rounded_deltas[i + 1 : j], interp)
     )
 
 
@@ -304,6 +335,8 @@ def _iup_contour_optimize_dp(
     forced=set(),
     tolerance: Real = 0,
     lookback: Integral = None,
+    rounded_deltas=None,
+    rounded_coords=None,
 ):
     """Straightforward Dynamic-Programming.  For each index i, find least-costly encoding of
     points 0 to i where i is explicitly encoded.  We find this by considering all previous
@@ -332,7 +365,9 @@ def _iup_contour_optimize_dp(
         for j in range(i - 2, max(i - lookback, -2), -1):
             cost = costs[j] + 1
 
-            if cost < best_cost and can_iup_in_between(deltas, coords, j, i, tolerance):
+            if cost < best_cost and can_iup_in_between(
+                deltas, coords, j, i, tolerance, rounded_deltas, rounded_coords
+            ):
                 costs[i] = best_cost = cost
                 chain[i] = j
 
@@ -367,6 +402,10 @@ def iup_contour_optimize(
 
     Returns delta vector that has most number of None items instead of
     the input delta.
+
+    Omitted deltas must be reconstructible within tolerance both before and
+    after OpenType rounding of the coordinates and explicit deltas. Retained
+    deltas preserve their original values. Ordinary IUP inference is unchanged.
     """
 
     n = len(deltas)
@@ -374,7 +413,17 @@ def iup_contour_optimize(
     # Get the easy cases out of the way:
 
     # If all are within tolerance distance of 0, encode nothing:
-    if all(abs(complex(*p)) <= tolerance for p in deltas):
+    if all(
+        (p == (0, 0) and tolerance >= 0)
+        or (
+            abs(complex(*p)) <= tolerance
+            and (
+                tolerance < 0.5
+                or abs(complex(floor(p[0] + 0.5), floor(p[1] + 0.5))) <= tolerance
+            )
+        )
+        for p in deltas
+    ):
         return [None] * n
 
     # If there's exactly one point, return it:
@@ -386,9 +435,18 @@ def iup_contour_optimize(
     if all(d0 == d for d in deltas):
         return [d0] + [None] * (n - 1)
 
+    rounded_coords = _iup_round_points(coords)
+    rounded_deltas = _iup_round_points(deltas)
+    if rounded_coords is coords and rounded_deltas is deltas:
+        rounded_coords = rounded_deltas = None
+
     # Else, solve the general problem using Dynamic Programming.
 
     forced = _iup_contour_bound_forced_set(deltas, coords, tolerance)
+    if rounded_deltas is not None:
+        forced |= _iup_contour_bound_forced_set(
+            rounded_deltas, rounded_coords, tolerance
+        )
     # The _iup_contour_optimize_dp() routine returns the optimal encoding
     # solution given the constraint that the last point is always encoded.
     # To remove this constraint, we use two different methods, depending on
@@ -406,10 +464,20 @@ def iup_contour_optimize(
         deltas = _rot_list(deltas, k)
         coords = _rot_list(coords, k)
         forced = _rot_set(forced, k, n)
+        if rounded_deltas is not None:
+            rounded_deltas = _rot_list(rounded_deltas, k)
+            rounded_coords = _rot_list(rounded_coords, k)
 
         # Debugging: Pass a set() instead of forced variable to the next call
         # to exercise forced-set computation for under-counting.
-        chain, costs = _iup_contour_optimize_dp(deltas, coords, forced, tolerance)
+        chain, costs = _iup_contour_optimize_dp(
+            deltas,
+            coords,
+            forced,
+            tolerance,
+            rounded_deltas=rounded_deltas,
+            rounded_coords=rounded_coords,
+        )
 
         # Assemble solution.
         solution = set()
@@ -433,7 +501,17 @@ def iup_contour_optimize(
         # circular n-length problem in the solution for new linear case.  I cannot prove that
         # this always produces the optimal solution...
         chain, costs = _iup_contour_optimize_dp(
-            deltas + deltas, coords + coords, forced, tolerance, n
+            deltas + deltas,
+            coords + coords,
+            forced,
+            tolerance,
+            n,
+            rounded_deltas=(
+                rounded_deltas + rounded_deltas if rounded_deltas is not None else None
+            ),
+            rounded_coords=(
+                rounded_coords + rounded_coords if rounded_coords is not None else None
+            ),
         )
         best_sol, best_cost = None, n + 1
 
