@@ -247,6 +247,24 @@ class CmapSubtableTest(unittest.TestCase):
                 subtable2.decompile(data, font)
                 self.assertEqual(subtable2.cmap, subtable.cmap)
 
+    def test_compile_2_lead_byte_conflict(self):
+        # https://github.com/fonttools/fonttools/issues/1524
+        font = ttLib.TTFont()
+        font.setGlyphOrder([".notdef", "a", "b"])
+        for cmap in [{0x20: "a", 0x2000: "b"}, {0x81: "a", 0x8140: "b"}]:
+            with self.subTest(cmap=cmap):
+                subtable = self.makeSubtable(2, 1, 1, 0)
+                subtable.cmap = cmap
+                with self.assertRaisesRegex(struct.error, "single-byte code"):
+                    subtable.compile(font)
+        # a .notdef single-byte code is left unencoded, so it does not conflict
+        subtable = self.makeSubtable(2, 1, 1, 0)
+        subtable.cmap = {0x20: ".notdef", 0x2000: "b"}
+        data = subtable.compile(font)
+        subtable2 = CmapSubtable.newSubtable(2)
+        subtable2.decompile(data, font)
+        self.assertEqual(subtable2.cmap, {0x2000: "b"})
+
     def test_compile_2_single_byte_notdef(self):
         font = ttLib.TTFont()
         font.setGlyphOrder([".notdef", "a", "b"])

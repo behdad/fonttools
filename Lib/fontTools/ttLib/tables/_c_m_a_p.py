@@ -695,6 +695,15 @@ class cmap_format_2(CmapSubtable):
         # are no char codes to process at all.
         # Char codes mapped to .notdef are left unencoded.
         items = [(code, gid) for code, gid in zip(charCodes, gids) if gid != 0]
+        singleBytes = {code for code, _ in items if code <= 0xFF}
+        conflicts = sorted(
+            singleBytes.intersection(code >> 8 for code, _ in items if code > 0xFF)
+        )
+        if conflicts:
+            raise struct.error(
+                "cmap format 2 cannot use byte 0x%02X both as a single-byte code "
+                "and as the first byte of a two-byte code" % conflicts[0]
+            )
         if not items or items[0][0] > 255:
             subHeader = SubHeader()
             subHeader.firstCode = 0
