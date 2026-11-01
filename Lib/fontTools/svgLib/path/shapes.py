@@ -1,4 +1,8 @@
+from fontTools.misc.transform import Identity
+from math import radians
 import re
+
+_TRANSFORM_RE = re.compile(r"[\s,]*(\w+)\s*\(([^)]*)\)")
 
 
 def _prefer_non_zero(*args):
@@ -20,17 +24,36 @@ def _strip_xml_ns(tag):
 
 
 def _transform(raw_value):
-    # TODO assumes a 'matrix' transform.
-    # No other transform functions are supported at the moment.
     # https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/transform
-    # start simple: if you aren't exactly matrix(...) then no love
-    match = re.match(r"matrix\((.*)\)", raw_value)
-    if not match:
-        raise NotImplementedError
-    matrix = tuple(float(p) for p in re.split(r"\s+|,", match.group(1)))
-    if len(matrix) != 6:
-        raise ValueError("wrong # of terms in %s" % raw_value)
-    return matrix
+    transform = Identity
+    pos = 0
+    while match := _TRANSFORM_RE.match(raw_value, pos):
+        name, args = match.groups()
+        pos = match.end()
+        if name not in ("matrix", "translate", "scale", "rotate", "skewX", "skewY"):
+            raise NotImplementedError(name)
+        values = [float(v) for v in args.replace(",", " ").split()]
+        n = len(values)
+        if name == "matrix" and n == 6:
+            transform = transform.transform(values)
+        elif name == "translate" and n in (1, 2):
+            transform = transform.translate(*values)
+        elif name == "scale" and n in (1, 2):
+            transform = transform.scale(*values)
+        elif name == "rotate" and n in (1, 3):
+            cx, cy = values[1:] or (0, 0)
+            transform = transform.translate(cx, cy)
+            transform = transform.rotate(radians(values[0]))
+            transform = transform.translate(-cx, -cy)
+        elif name == "skewX" and n == 1:
+            transform = transform.skew(radians(values[0]), 0)
+        elif name == "skewY" and n == 1:
+            transform = transform.skew(0, radians(values[0]))
+        else:
+            raise ValueError("wrong # of terms in %s" % raw_value)
+    if raw_value[pos:].strip(" \t\r\n,"):
+        raise ValueError("invalid transform: %r" % raw_value)
+    return transform
 
 
 class PathBuilder(object):
