@@ -20,6 +20,7 @@ from fontTools.otlLib.optimize.gpos import (
     _compression_level_from_env,
     compact_lookup,
 )
+from fontTools.otlLib.optimize.gsub import compact_single_subst
 from fontTools.otlLib.error import OpenTypeLibError
 from fontTools.misc.loggingTools import deprecateFunction
 from functools import reduce
@@ -1633,11 +1634,11 @@ class SingleSubstBuilder(LookupBuilder):
         """Build the lookup.
 
         Returns:
-            An ``otTables.Lookup`` object representing the multiple
+            An ``otTables.Lookup`` object representing the single
             substitution lookup.
         """
         subtables = self.build_subst_subtables(self.mapping, buildSingleSubstSubtable)
-        return self.buildLookup_(subtables)
+        return compact_single_subst(self.font, self.buildLookup_(subtables))
 
     def getAlternateGlyphs(self):
         return {glyph: [repl] for glyph, repl in self.mapping.items()}
