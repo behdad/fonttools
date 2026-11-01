@@ -16,34 +16,21 @@ class ExtendedGlyphMap(dict):
 
 @pytest.mark.parametrize("extension", [False, True])
 @pytest.mark.parametrize(
-    "pairs,smaller",
+    "pairs",
     [
-        (
-            [(i, i + 100) for i in range(1, 26)]
-            + [(40 + i * 10, 201 + i * 101) for i in range(5)],
-            True,
-        ),
-        ([(i, i + (100 if i % 2 else 200)) for i in range(1, 13)], False),
-        (
-            [(i, i + 100) for i in range(1, 5)] + [(i, i + 200) for i in range(10, 14)],
-            True,
-        ),
-        ([(0xFFF8 + i, i) for i in range(8)] + [(1, 100)], True),
-        (
-            [(i, i + 70000) for i in range(1, 9)]
-            + [(i, i + 100) for i in range(20, 28)],
-            True,
-        ),
-        (
-            [(i, i + 100) for i in range(70000, 70006)]
-            + [(i, i + 200) for i in range(70010, 70016)],
-            True,
-        ),
-        ([(70000 + i, i + 1) for i in range(8)] + [(70010, 100)], True),
-        ([(70000 + i, 71000 + i + i // 10) for i in range(30000)], False),
+        [(i, i + 100) for i in range(1, 26)]
+        + [(40 + i * 10, 201 + i * 101) for i in range(5)],
+        [(i, i + (100 if i % 2 else 200)) for i in range(1, 13)],
+        [(i, i + 100) for i in range(1, 5)] + [(i, i + 200) for i in range(10, 14)],
+        [(0xFFF8 + i, i) for i in range(8)] + [(1, 100)],
+        [(i, i + 70000) for i in range(1, 9)] + [(i, i + 100) for i in range(20, 28)],
+        [(i, i + 100) for i in range(70000, 70006)]
+        + [(i, i + 200) for i in range(70010, 70016)],
+        [(70000 + i, i + 1) for i in range(8)] + [(70010, 100)],
+        [(70000 + i, 71000 + i + i // 10) for i in range(30000)],
     ],
 )
-def test_single_subst_compact_roundtrip(pairs, smaller, extension):
+def test_single_subst_compact_roundtrip(pairs, extension):
     font = ttLib.TTFont()
     glyphs = [f"g{i}" for i in range(max(max(pair) for pair in pairs) + 1)]
     font.setGlyphOrder(glyphs)
@@ -71,8 +58,7 @@ def test_single_subst_compact_roundtrip(pairs, smaller, extension):
             actual.setdefault(source, target)
     assert actual == mapping
     assert len(data) <= len(unoptimized_data)
-    if smaller and not extension:
-        assert len(data) < len(unoptimized_data)
+    assert len(data) * reloaded.SubTableCount <= len(unoptimized_data)
 
 
 def test_single_subst_preserves_explicit_subtable_break():

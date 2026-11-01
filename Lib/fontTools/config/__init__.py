@@ -73,6 +73,7 @@ Config.register_option(
     help=dedent("""\
         Enable optimizations that prioritize speed over file size. This
         mainly affects how glyf table and gvar / VARC tables are compiled.
+        It also disables size-driven splitting of GSUB SingleSubst lookups.
         The produced fonts will be larger, but rendering performance will
         be improved with HarfBuzz and other text layout engines.
         """),
