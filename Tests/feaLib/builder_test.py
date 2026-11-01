@@ -9,7 +9,8 @@ from fontTools.ttLib import TTFont, newTable
 from fontTools.feaLib.parser import Parser
 from fontTools.feaLib import ast
 from fontTools.feaLib.lexer import Lexer
-from fontTools.fontBuilder import addFvar
+from fontTools.fontBuilder import FontBuilder, addFvar
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 import difflib
 from io import StringIO
 from textwrap import dedent
@@ -1636,6 +1637,27 @@ class BuilderTest(unittest.TestCase):
         var_region_axis_wdth = var_region_list.Region[1].VarRegionAxis[1]
         assert self.get_region(var_region_axis_wght) == (0.0, 0.875, 1.0)
         assert self.get_region(var_region_axis_wdth) == (0.0, 0.5, 1.0)
+
+    def test_ligatureCaretByIndex_coordinate_order(self):
+        fb = FontBuilder(1000, isTTF=True)
+        fb.setupGlyphOrder([".notdef", "f_f_i"])
+        pen = TTGlyphPen(None)
+        pen.moveTo((300, 0))
+        pen.lineTo((300, 100))
+        pen.lineTo((100, 100))
+        pen.lineTo((100, 0))
+        pen.closePath()
+        fb.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "f_f_i": pen.glyph()})
+        font = fb.font
+        addOpenTypeFeaturesFromString(
+            font, "table GDEF { LigatureCaretByIndex f_f_i 2 2 0; } GDEF;"
+        )
+        gdef = newTable("GDEF")
+        gdef.decompile(font["GDEF"].compile(font), font)
+        carets = gdef.table.LigCaretList.LigGlyph[0].CaretValue
+        coordinates = font["glyf"]["f_f_i"].getCoordinates(font["glyf"])[0]
+
+        assert [coordinates[caret.CaretValuePoint][0] for caret in carets] == [100, 300]
 
     def test_ligatureCaretByPos_variable_scalar(self):
         """Test that the `avar` table is consulted when normalizing user-space

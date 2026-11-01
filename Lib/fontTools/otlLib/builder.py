@@ -2903,6 +2903,8 @@ def buildLigCaretList(coords, points, glyphMap):
             the insertion point of each ligature component after the first one.
         points: A mapping between glyph names and a list of contour points for
             the insertion point of each ligature component after the first one.
+            The sequence is preserved and must be in increasing caret coordinate
+            order, which need not be numerical contour point order.
         glyphMap: a glyph name to ID map, typically returned from
             ``font.getReverseGlyphMap()``.
 
@@ -2933,7 +2935,7 @@ def buildLigGlyph(coords, points):
         coords = sorted(coords, key=lambda c: c[0] if isinstance(c, tuple) else c)
         carets.extend([buildCaretValueForCoord(c) for c in coords])
     if points:
-        carets.extend([buildCaretValueForPoint(p) for p in sorted(points)])
+        carets.extend([buildCaretValueForPoint(p) for p in points])
     if not carets:
         return None
     self = ot.LigGlyph()

@@ -1029,7 +1029,8 @@ class FontRevisionStatement(Statement):
 
 class LigatureCaretByIndexStatement(Statement):
     """A ``GDEF`` table ``LigatureCaretByIndex`` statement. ``glyphs`` should be
-    a `glyph-containing object`_, and ``carets`` should be a list of integers."""
+    a `glyph-containing object`_, and ``carets`` should be a list of integers in
+    increasing caret coordinate order. Repeated point indices are ignored."""
 
     def __init__(self, glyphs, carets, location=None):
         Statement.__init__(self, location)
@@ -1038,7 +1039,9 @@ class LigatureCaretByIndexStatement(Statement):
     def build(self, builder):
         """Calls the builder object's ``add_ligatureCaretByIndex_`` callback."""
         glyphs = self.glyphs.glyphSet()
-        builder.add_ligatureCaretByIndex_(self.location, glyphs, set(self.carets))
+        builder.add_ligatureCaretByIndex_(
+            self.location, glyphs, list(dict.fromkeys(self.carets))
+        )
 
     def asFea(self, indent=""):
         return "LigatureCaretByIndex {} {};".format(
