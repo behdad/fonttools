@@ -30,14 +30,6 @@ MAX_LOOKBACK = 8
 
 
 @cython.cfunc
-@cython.inline
-@cython.returns(cython.int)
-@cython.locals(a=cython.double, b=cython.double)
-def _iup_round_equal(a, b):
-    return abs(a - b) <= 1 and floor(a + 0.5) == floor(b + 0.5)
-
-
-@cython.cfunc
 @cython.locals(
     j=cython.int,
     n=cython.int,
@@ -48,24 +40,13 @@ def _iup_round_equal(a, b):
     scale=cython.double,
     x=cython.double,
     d=cython.double,
-    round_equality=cython.int,
 )
 def iup_segment(
-    coords: _PointSegment,
-    rc1: _Point,
-    rd1: _Delta,
-    rc2: _Point,
-    rd2: _Delta,
-    round_equality,
+    coords: _PointSegment, rc1: _Point, rd1: _Delta, rc2: _Point, rd2: _Delta
 ):  # -> _DeltaSegment:
     """Given two reference coordinates `rc1` & `rc2` and their respective
     delta vectors `rd1` & `rd2`, returns interpolated deltas for the set of
-    coordinates `coords`.
-
-    Optimization compares equality after OpenType rounding. Normal inference
-    may receive scaled deltas and must use exact equality. Neither mode rounds
-    the values used for interpolation.
-    """
+    coordinates `coords`."""
 
     # rc1 = reference coord 1
     # rd1 = reference delta 1
@@ -74,15 +55,9 @@ def iup_segment(
         out_arrays[j] = out = []
         x1, x2, d1, d2 = rc1[j], rc2[j], rd1[j], rd2[j]
 
-        if x1 == x2 or (
-            round_equality and abs(x1 - x2) <= 1 and floor(x1 + 0.5) == floor(x2 + 0.5)
-        ):
+        if x1 == x2:
             n = len(coords)
-            if d1 == d2 or (
-                round_equality
-                and abs(d1 - d2) <= 1
-                and floor(d1 + 0.5) == floor(d2 + 0.5)
-            ):
+            if d1 == d2:
                 out.extend([d1] * n)
             else:
                 out.extend([0] * n)
@@ -142,7 +117,7 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
         i1, i2, ri1, ri2 = 0, start, start, indices[-1]
         out.extend(
             iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2], False
+                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
             )
         )
     out.append(deltas[start])
@@ -151,12 +126,7 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
             i1, i2, ri1, ri2 = start + 1, end, start, end
             out.extend(
                 iup_segment(
-                    coords[i1:i2],
-                    coords[ri1],
-                    deltas[ri1],
-                    coords[ri2],
-                    deltas[ri2],
-                    False,
+                    coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
                 )
             )
         out.append(deltas[end])
@@ -166,7 +136,7 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
         i1, i2, ri1, ri2 = start + 1, n, start, indices[0]
         out.extend(
             iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2], False
+                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
             )
         )
 
@@ -201,6 +171,17 @@ def iup_delta(
 
 
 @cython.cfunc
+@cython.locals(x=cython.double, y=cython.double)
+def _iup_round_points(points):
+    # Reuse integer-valued input, which is the usual case. Prepare rounded
+    # coordinates and deltas once per contour, outside the DP inner loop.
+    for x, y in points:
+        if x != floor(x) or y != floor(y):
+            return [(floor(x + 0.5), floor(y + 0.5)) for x, y in points]
+    return points
+
+
+@cython.cfunc
 @cython.inline
 @cython.locals(
     i=cython.int,
@@ -218,20 +199,33 @@ def can_iup_in_between(
     i: Integral,
     j: Integral,
     tolerance: Real,
+    rounded_deltas=None,
+    rounded_coords=None,
 ):  # -> bool:
     """Return true if the deltas for points at `i` and `j` (`i < j`) can be
     successfully used to interpolate deltas for points in between them within
     provided error tolerance."""
 
     assert j - i >= 2
-    interp = iup_segment(
-        coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j], True
-    )
-    deltas = deltas[i + 1 : j]
+    interp = iup_segment(coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j])
+    if not all(
+        abs(complex(x - p, y - q)) <= tolerance
+        for (x, y), (p, q) in zip(deltas[i + 1 : j], interp)
+    ):
+        return False
+    if rounded_deltas is None:
+        return True
 
+    interp = iup_segment(
+        rounded_coords[i + 1 : j],
+        rounded_coords[i],
+        rounded_deltas[i],
+        rounded_coords[j],
+        rounded_deltas[j],
+    )
     return all(
         abs(complex(x - p, y - q)) <= tolerance
-        for (x, y), (p, q) in zip(deltas, interp)
+        for (x, y), (p, q) in zip(rounded_deltas[i + 1 : j], interp)
     )
 
 
@@ -282,17 +276,13 @@ def _iup_contour_bound_forced_set(
 
             force = False
 
-            # If the two coordinates round to the same value, then the interpolation
+            # If the two coordinates are the same, then the interpolation
             # algorithm produces the same delta if both deltas are equal,
             # and zero if they differ.
             #
             # This test has to be before the next one.
-            if c1 == c2 or (abs(c1 - c2) <= 1 and floor(c1 + 0.5) == floor(c2 + 0.5)):
-                if (
-                    abs(d1 - d2) > tolerance
-                    and (abs(d1 - d2) > 1 or floor(d1 + 0.5) != floor(d2 + 0.5))
-                    and abs(dj) > tolerance
-                ):
+            if c1 == c2:
+                if abs(d1 - d2) > tolerance and abs(dj) > tolerance:
                     force = True
 
             # If coordinate for current point is between coordinate of adjacent
@@ -307,9 +297,7 @@ def _iup_contour_bound_forced_set(
             # Otherwise, the delta should either match the closest, or have the
             # same sign as the interpolation of the two deltas.
             else:  # cj < c1 or c2 < cj
-                if d1 != d2 and (
-                    abs(d1 - d2) > 1 or floor(d1 + 0.5) != floor(d2 + 0.5)
-                ):
+                if d1 != d2:
                     if cj < c1:
                         if (
                             abs(dj) > tolerance
@@ -347,6 +335,8 @@ def _iup_contour_optimize_dp(
     forced=set(),
     tolerance: Real = 0,
     lookback: Integral = None,
+    rounded_deltas=None,
+    rounded_coords=None,
 ):
     """Straightforward Dynamic-Programming.  For each index i, find least-costly encoding of
     points 0 to i where i is explicitly encoded.  We find this by considering all previous
@@ -375,7 +365,9 @@ def _iup_contour_optimize_dp(
         for j in range(i - 2, max(i - lookback, -2), -1):
             cost = costs[j] + 1
 
-            if cost < best_cost and can_iup_in_between(deltas, coords, j, i, tolerance):
+            if cost < best_cost and can_iup_in_between(
+                deltas, coords, j, i, tolerance, rounded_deltas, rounded_coords
+            ):
                 costs[i] = best_cost = cost
                 chain[i] = j
 
@@ -411,8 +403,9 @@ def iup_contour_optimize(
     Returns delta vector that has most number of None items instead of
     the input delta.
 
-    Equality checks use OpenType-rounded coordinates and deltas. Interpolation
-    and error tolerance calculations retain the input fractional values.
+    Omitted deltas must be reconstructible within tolerance both before and
+    after OpenType rounding of the coordinates and explicit deltas. Retained
+    deltas preserve their original values. Ordinary IUP inference is unchanged.
     """
 
     n = len(deltas)
@@ -420,25 +413,40 @@ def iup_contour_optimize(
     # Get the easy cases out of the way:
 
     # If all are within tolerance distance of 0, encode nothing:
-    if all(abs(complex(*p)) <= tolerance for p in deltas):
+    if all(
+        (p == (0, 0) and tolerance >= 0)
+        or (
+            abs(complex(*p)) <= tolerance
+            and (
+                tolerance < 0.5
+                or abs(complex(floor(p[0] + 0.5), floor(p[1] + 0.5))) <= tolerance
+            )
+        )
+        for p in deltas
+    ):
         return [None] * n
 
     # If there's exactly one point, return it:
     if n == 1:
         return deltas
 
-    # If all deltas round to the same values, return just one (the first one):
+    # If all deltas are exactly the same, return just one (the first one):
     d0 = deltas[0]
-    if all(d0 == d for d in deltas) or all(
-        (d0[0] == d[0] or _iup_round_equal(d0[0], d[0]))
-        and (d0[1] == d[1] or _iup_round_equal(d0[1], d[1]))
-        for d in deltas
-    ):
+    if all(d0 == d for d in deltas):
         return [d0] + [None] * (n - 1)
+
+    rounded_coords = _iup_round_points(coords)
+    rounded_deltas = _iup_round_points(deltas)
+    if rounded_coords is coords and rounded_deltas is deltas:
+        rounded_coords = rounded_deltas = None
 
     # Else, solve the general problem using Dynamic Programming.
 
     forced = _iup_contour_bound_forced_set(deltas, coords, tolerance)
+    if rounded_deltas is not None:
+        forced |= _iup_contour_bound_forced_set(
+            rounded_deltas, rounded_coords, tolerance
+        )
     # The _iup_contour_optimize_dp() routine returns the optimal encoding
     # solution given the constraint that the last point is always encoded.
     # To remove this constraint, we use two different methods, depending on
@@ -456,10 +464,20 @@ def iup_contour_optimize(
         deltas = _rot_list(deltas, k)
         coords = _rot_list(coords, k)
         forced = _rot_set(forced, k, n)
+        if rounded_deltas is not None:
+            rounded_deltas = _rot_list(rounded_deltas, k)
+            rounded_coords = _rot_list(rounded_coords, k)
 
         # Debugging: Pass a set() instead of forced variable to the next call
         # to exercise forced-set computation for under-counting.
-        chain, costs = _iup_contour_optimize_dp(deltas, coords, forced, tolerance)
+        chain, costs = _iup_contour_optimize_dp(
+            deltas,
+            coords,
+            forced,
+            tolerance,
+            rounded_deltas=rounded_deltas,
+            rounded_coords=rounded_coords,
+        )
 
         # Assemble solution.
         solution = set()
@@ -483,7 +501,17 @@ def iup_contour_optimize(
         # circular n-length problem in the solution for new linear case.  I cannot prove that
         # this always produces the optimal solution...
         chain, costs = _iup_contour_optimize_dp(
-            deltas + deltas, coords + coords, forced, tolerance, n
+            deltas + deltas,
+            coords + coords,
+            forced,
+            tolerance,
+            n,
+            rounded_deltas=(
+                rounded_deltas + rounded_deltas if rounded_deltas is not None else None
+            ),
+            rounded_coords=(
+                rounded_coords + rounded_coords if rounded_coords is not None else None
+            ),
         )
         best_sol, best_cost = None, n + 1
 

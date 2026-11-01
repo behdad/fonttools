@@ -1,6 +1,7 @@
 import fontTools.varLib.iup as iup
 from fontTools.misc.roundTools import otRound
 import sys
+import random
 import pytest
 
 
@@ -152,16 +153,95 @@ class IupTest:
 
         assert iup.iup_contour(deltas, coords) == expected
 
-    def test_optimize_equal_rounded_deltas(self):
+    @pytest.mark.parametrize("tolerance", [0, 0.03])
+    def test_optimize_equal_rounded_deltas(self, tolerance):
         coords = [(0, 0), (0, 10), (0, 20)]
         deltas = [(1.01, 0), (1.02, 0), (1.03, 0)]
-        optimized = iup.iup_contour_optimize(deltas, coords)
-        assert sum(d is not None for d in optimized) == 1
+        optimized = iup.iup_contour_optimize(deltas, coords, tolerance)
+        inferred = iup.iup_contour(optimized, coords)
+        assert all(
+            abs(complex(x - p, y - q)) <= tolerance
+            for (x, y), (p, q) in zip(deltas, inferred)
+        )
         assert all(d is None or d == original for d, original in zip(optimized, deltas))
         encoded = [
             None if d is None else (otRound(d[0]), otRound(d[1])) for d in optimized
         ]
         assert iup.iup_contour(encoded, coords) == [(1, 0), (1, 0), (1, 0)]
+
+    @pytest.mark.parametrize("rotation", range(4))
+    @pytest.mark.parametrize("tolerance", [0, 0.25])
+    def test_optimize_preserves_rounded_interpolation(self, rotation, tolerance):
+        coords = [(-0.625, 0), (-0.25, 10), (0.5, 20), (-0.5, 70)]
+        deltas = [(-0.375, 0), (-0.625, 0), (-1.125, 0), (-0.375, 0)]
+        coords = coords[rotation:] + coords[:rotation]
+        deltas = deltas[rotation:] + deltas[:rotation]
+        optimized = iup.iup_contour_optimize(deltas, coords, tolerance)
+        inferred = iup.iup_contour(optimized, coords)
+        assert all(
+            abs(complex(x - p, y - q)) <= tolerance
+            for (x, y), (p, q) in zip(deltas, inferred)
+        )
+        encoded = [
+            None if d is None else (otRound(d[0]), otRound(d[1])) for d in optimized
+        ]
+        rounded_coords = [(otRound(x), otRound(y)) for x, y in coords]
+        inferred = iup.iup_contour(encoded, rounded_coords)
+        assert all(
+            abs(complex(otRound(x) - p, otRound(y) - q)) <= tolerance
+            for (x, y), (p, q) in zip(deltas, inferred)
+        )
+
+    @pytest.mark.parametrize("delta", [(0.5, 0), (0, 0.5), (0.4, 0.4), (-0.5, 0)])
+    def test_optimize_zero_checks_rounded_deltas(self, delta):
+        coords = [(0, 0), (10, 10), (20, 0)]
+        deltas = [delta] * len(coords)
+        optimized = iup.iup_contour_optimize(deltas, coords, tolerance=0.5)
+        inferred = iup.iup_contour(optimized, coords)
+        assert all(
+            abs(complex(x - p, y - q)) <= 0.5
+            for (x, y), (p, q) in zip(deltas, inferred)
+        )
+        encoded = [
+            None if d is None else (otRound(d[0]), otRound(d[1])) for d in optimized
+        ]
+        assert iup.iup_contour(encoded, coords) == [
+            (otRound(delta[0]), otRound(delta[1]))
+        ] * len(coords)
+
+    @pytest.mark.parametrize("tolerance", [0, 0.5, 1])
+    def test_optimize_fractional_contours(self, tolerance):
+        randomizer = random.Random(3636)
+        for index in range(200):
+            count = randomizer.randrange(1, 10)
+            coords = [
+                (randomizer.randrange(-16, 17) / 8, randomizer.randrange(-16, 17) / 8)
+                for _ in range(count)
+            ]
+            deltas = [
+                (randomizer.randrange(-16, 17) / 8, randomizer.randrange(-16, 17) / 8)
+                for _ in range(count)
+            ]
+            if index % 5 == 0:
+                deltas = [deltas[0]] * count
+            optimized = iup.iup_contour_optimize(deltas, coords, tolerance)
+            assert all(
+                d is None or d == original for d, original in zip(optimized, deltas)
+            )
+            inferred = iup.iup_contour(optimized, coords)
+            assert all(
+                abs(complex(x - p, y - q)) <= tolerance
+                for (x, y), (p, q) in zip(deltas, inferred)
+            )
+            encoded = [
+                None if d is None else (otRound(d[0]), otRound(d[1])) for d in optimized
+            ]
+            rounded_coords = [(otRound(x), otRound(y)) for x, y in coords]
+            inferred = iup.iup_contour(encoded, rounded_coords)
+            assert all(
+                abs(complex(otRound(x) - p, otRound(y) - q)) <= tolerance
+                for (x, y), (p, q) in zip(deltas, inferred)
+            )
 
 
 if __name__ == "__main__":
