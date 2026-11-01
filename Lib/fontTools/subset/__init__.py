@@ -204,6 +204,14 @@ These options control how additional glyphs are added to the subset.
   Do not add glyphs 0, 1, 2, and 3 to the subset, unless specified in
   glyph set. [default]
 
+--retain-all-variation-sequences
+  Keep all Unicode variation sequences for requested Unicode base characters,
+  without explicitly selecting each variation selector. Applies to default
+  and non-default sequences in both 'cmap' and 'DMAP'.
+
+--no-retain-all-variation-sequences
+  Require variation selectors to be selected explicitly. [default]
+
 --no-layout-closure
   Do not expand glyph set to add glyphs produced by OpenType layout
   features.  Instead, OpenType layout features will be subset to only
@@ -3166,7 +3174,10 @@ def _cmap_closure_glyphs(self, s, excluded_unicodes=(), excluded_uvs=()):
         if table.format in (14, 15):
             table_uvs = set()
             for varSelector, cmap in table.uvsDict.items():
-                if varSelector not in s.unicodes_requested:
+                if (
+                    not s.options.retain_all_variation_sequences
+                    and varSelector not in s.unicodes_requested
+                ):
                     continue
                 matches = [
                     (u, g)
@@ -3288,7 +3299,7 @@ def subset_glyphs(self, s):
                     or (u in s.unicodes_requested and (v, u) not in excluded_uvs)
                 ]
                 for v, l in t.uvsDict.items()
-                if v in s.unicodes_requested
+                if s.options.retain_all_variation_sequences or v in s.unicodes_requested
             }
             t.uvsDict = {v: l for v, l in t.uvsDict.items() if l}
         elif t.isUnicode():
@@ -3624,6 +3635,7 @@ class Options(object):
         self.name_languages = [0x0409]  # English
         self.obfuscate_names = False  # to make webfont unusable as a system font
         self.retain_gids = False
+        self.retain_all_variation_sequences = False
         self.notdef_glyph = True  # gid0 for TrueType / .notdef for CFF
         self.notdef_outline = False  # No need for notdef to have an outline really
         self.recommended_glyphs = False  # gid1, gid2, gid3 for TrueType

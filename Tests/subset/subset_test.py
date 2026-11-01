@@ -1250,6 +1250,41 @@ class SubsetTest:
             subsetfont, self.getpath("cmap14_font1.uvs_non_default.ttx"), ["cmap"]
         )
 
+    @pytest.mark.parametrize("cmap_format", [14, 15])
+    @pytest.mark.parametrize("unicodes", [[0x4E05], [0x4E05, 0xE0100]])
+    def test_retain_all_variation_sequences(self, cmap_format, unicodes):
+        fontpath = self.compile_font(self.getpath("cmap14_font1.ttx"), ".otf")
+        font = TTFont(fontpath)
+        old_table = next(t for t in font["cmap"].tables if t.format == 14)
+        table = CmapSubtable.newSubtable(cmap_format)
+        table.platformID = old_table.platformID
+        table.platEncID = old_table.platEncID
+        table.language = old_table.language
+        table.cmap = {}
+        table.uvsDict = old_table.uvsDict
+        table.uvsDict[0xFE00] = [(0x4E05, "g14"), (0x4E06, "g16")]
+        table.uvsDict[0xE0101] = [(0x4E05, "g13"), (0x4E06, "g16")]
+        font["cmap"].tables[font["cmap"].tables.index(old_table)] = table
+
+        options = subset.Options()
+        options.glyph_names = True
+        options.retain_all_variation_sequences = True
+        subsetter = subset.Subsetter(options=options)
+        subsetter.populate(unicodes=unicodes)
+        subsetter.subset(font)
+
+        stream = io.BytesIO()
+        font.save(stream)
+        font = TTFont(io.BytesIO(stream.getvalue()))
+        assert font.getBestCmap() == {0x4E05: "g15"}
+        assert font.getGlyphOrder() == [".notdef", "g13", "g14", "g15"]
+        table = next(t for t in font["cmap"].tables if t.format == cmap_format)
+        assert table.uvsDict == {
+            0xFE00: [(0x4E05, "g14")],
+            0xE0100: [(0x4E05, None)],
+            0xE0101: [(0x4E05, "g13")],
+        }
+
     def test_cmap_format15(self):
         fontpath = self.compile_font(self.getpath("cmap14_font1.ttx"), ".otf")
         inputpath = self.temp_path(".otf")
@@ -1440,12 +1475,18 @@ class SubsetTest:
         font = TTFont(io.BytesIO(stream.getvalue()))
         assert [font.getBestCmap(p) for p in preferences] == expected
 
+    @pytest.mark.parametrize("retain_all_variation_sequences", [False, True])
     @pytest.mark.parametrize("cmap_format", [14, 15])
     @pytest.mark.parametrize("dmap_format", [14, 15])
     @pytest.mark.parametrize("glyph_zero", [".notdef", "zero"])
     @pytest.mark.parametrize("dmap_mapping", ["zero", "default", "nonzero"])
     def test_DMAP_UVS_fallback(
-        self, cmap_format, dmap_format, glyph_zero, dmap_mapping
+        self,
+        cmap_format,
+        dmap_format,
+        glyph_zero,
+        dmap_mapping,
+        retain_all_variation_sequences,
     ):
         glyph_order = [glyph_zero, "baseA", "cmapA.var", "dmapA.var"]
         fb = FontBuilder(1024, isTTF=True)
@@ -1482,8 +1523,11 @@ class SubsetTest:
         font = TTFont(io.BytesIO(stream.getvalue()))
         options = subset.Options()
         options.glyph_names = True
+        options.retain_all_variation_sequences = retain_all_variation_sequences
         subsetter = subset.Subsetter(options=options)
-        subsetter.populate(unicodes=[0x41, 0xFE00])
+        subsetter.populate(
+            unicodes=[0x41] if retain_all_variation_sequences else [0x41, 0xFE00]
+        )
         subsetter.subset(font)
 
         expected_glyphs = [glyph_zero, "baseA"]
