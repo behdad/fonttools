@@ -275,7 +275,7 @@ Tom Kacvinsky, Jens Kutilek, Antoine Leca, Werner Lemberg, Tal Leming,
 Jushuanghui Li, Liang Hai, Peter Lofting, Cosimo Lupo, Olli Meier, Masaya Nakamura,
 Dave Opstad, oxura, Laurence Penney,
 Roozbeh Pournader, Garret Rieger, Read Roberts, Colin Rofls, Guido van Rossum,
-Just van Rossum, SAY-5, Andreas Seidel, Georg Seifert, Chris Simpkins, Miguel Sousa,
+Just van Rossum, SAY-5, Andreas Seidel, Georg Seifert, Chris Simpkins, snowyukitty, Miguel Sousa,
 spicysharkco, Adam Twardoch, Adrien Tétar, Vitaly Volkov, Paul Wise, Xie Huanyi.
 
 Copyrights

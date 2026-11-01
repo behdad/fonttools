@@ -1337,6 +1337,10 @@ class Glyph(object):
         to return a list of coordinates representing all the components involved
         in the glyph.
 
+        The ``round`` function is applied to simple-glyph coordinates and XY
+        component offsets before their transforms. Intermediate coordinates of
+        nested components are not rounded.
+
         To interpret the flags for each point, see the "Simple Glyph Flags"
         section of the `glyf table specification <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf#simple-glyph-description>`.
 
@@ -1395,6 +1399,9 @@ class Glyph(object):
                 else:
                     # component uses XY offsets
                     move = compo.x, compo.y
+                    if round is not noRound:
+                        # Match the offsets encoded by GlyphComponent.compile.
+                        move = round(move[0]), round(move[1])
                     if not hasattr(compo, "transform"):
                         coordinates.translate(move)
                     else:

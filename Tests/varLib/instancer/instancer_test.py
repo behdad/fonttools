@@ -1,5 +1,5 @@
 from fontTools.misc.fixedTools import floatToFixedToFloat
-from fontTools.misc.roundTools import noRound
+from fontTools.misc.roundTools import noRound, otRound
 from fontTools.misc.testTools import stripVariableItemsFromTTX
 from fontTools.misc.textTools import Tag
 from fontTools.pens.recordingPen import RecordingPen
@@ -349,6 +349,40 @@ class InstantiateGvarTest(object):
         ]
 
         assert "gvar" not in varfont
+
+    @pytest.mark.parametrize("location", [400, 600, 700, 900, (400, 700, 900)])
+    def test_nested_composite_bounds_roundtrip(self, varfont, location):
+        glyf = varfont["glyf"]
+        pen = TTGlyphPen(glyf)
+        pen.addComponent("minus", (1.5, 0, 0, 1.5, 0, 0))
+        glyf["nested"] = pen.glyph()
+        varfont["hmtx"].metrics["nested"] = (500, 0)
+        varfont["vmtx"].metrics["nested"] = (1000, 0)
+        varfont["HVAR"].table.AdvWidthMap.mapping["nested"] = 0xFFFFFFFF
+        varfont["gvar"].variations["minus"] = [
+            TupleVariation({"wght": (0, 1, 1)}, [(1, -1)] + [(0, 0)] * 4)
+        ]
+
+        instance = instancer.instantiateVariableFont(
+            varfont, {"wght": location, "wdth": 100}
+        )
+        output = BytesIO()
+        instance.save(output)
+        output.seek(0)
+        saved = ttLib.TTFont(output)
+        glyph = saved["glyf"]["nested"]
+        stored_bounds = glyph.xMin, glyph.yMin, glyph.xMax, glyph.yMax
+        component = saved["glyf"]["minus"].components[0]
+        points = [
+            (1.5 * (x + component.x), 1.5 * (y + component.y))
+            for x, y in saved["glyf"]["hyphen"].coordinates
+        ]
+        xs, ys = zip(*points)
+        assert stored_bounds == tuple(
+            otRound(value) for value in (min(xs), min(ys), max(xs), max(ys))
+        )
+        glyph.recalcBounds(saved["glyf"])
+        assert stored_bounds == (glyph.xMin, glyph.yMin, glyph.xMax, glyph.yMax)
 
     def test_composite_glyph_not_in_gvar(self, varfont):
         """The 'minus' glyph is a composite glyph, which references 'hyphen' as a

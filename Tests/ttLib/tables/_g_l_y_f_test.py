@@ -688,6 +688,50 @@ class GlyphTest:
             (int(p[0]), int(p[1])) == p for p in coords
         ), f"{[p for p in coords]}"
 
+    @pytest.mark.parametrize("offset", [0, 1, 0.4, 0.5, 0.6, -0.4, -0.5, -0.6, -1.5])
+    @pytest.mark.parametrize(
+        "offset_flags", [0, SCALED_COMPONENT_OFFSET, UNSCALED_COMPONENT_OFFSET]
+    )
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_get_coordinates_round_component_offsets(
+        self, offset, offset_flags, nested
+    ):
+        glyphs = {}
+        pen = TTGlyphPen(glyphs)
+        pen.moveTo((0, 0))
+        pen.lineTo((1, 0))
+        pen.lineTo((1, 1))
+        pen.closePath()
+        glyphs["base"] = pen.glyph()
+        pen = TTGlyphPen(glyphs)
+        pen.addComponent("base", (1.5, 0, 0, 1.5, 0, 0))
+        glyphs["inner"] = pen.glyph()
+        component = glyphs["inner"].components[0]
+        component.x, component.y = offset, -offset
+        component.flags = offset_flags
+        glyph = glyphs["inner"]
+        if nested:
+            pen = TTGlyphPen(glyphs)
+            pen.addComponent("inner", (0.5, 0, 0, 0.5, 0, 0))
+            glyph = pen.glyph()
+
+        def expected(x, y):
+            scale = 1.5 if offset_flags == SCALED_COMPONENT_OFFSET else 1
+            result = [
+                (1.5 * px + scale * x, 1.5 * py + scale * y)
+                for px, py in glyphs["base"].coordinates
+            ]
+            return [(px * 0.5, py * 0.5) for px, py in result] if nested else result
+
+        assert list(glyph.getCoordinates(glyphs, round=otRound)[0]) == expected(
+            otRound(offset), otRound(-offset)
+        )
+        for actual, wanted in zip(
+            glyph.getCoordinates(glyphs)[0], expected(offset, -offset), strict=True
+        ):
+            assert actual == pytest.approx(wanted)
+        assert (component.x, component.y) == (offset, -offset)
+
     def test_getCompositeMaxpValues(self):
         # https://github.com/fonttools/fonttools/issues/2044
         glyphSet = {}
