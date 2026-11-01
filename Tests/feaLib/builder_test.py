@@ -1707,6 +1707,59 @@ class BuilderTest(unittest.TestCase):
             "feature liga useExtension { sub f f by f_f; } liga;",
         )
 
+    def test_GPOS_2b_pair_adjustments(self):
+        font = makeTTFont()
+        addOpenTypeFeatures(font, self.getpath("GPOS_2b.fea"))
+        reloaded = newTable("GPOS")
+        reloaded.decompile(font["GPOS"].compile(font), font)
+        fields = ("XPlacement", "YPlacement", "XAdvance", "YAdvance")
+
+        def adjustments(left, right):
+            result = [[0] * 4 for _ in range(2)]
+            for lookup in reloaded.table.LookupList.Lookup:
+                for subtable in lookup.SubTable:
+                    if lookup.LookupType == 9:
+                        subtable = subtable.ExtSubTable
+                    if left not in subtable.Coverage.glyphs:
+                        continue
+                    if subtable.Format in (1, 3):
+                        index = subtable.Coverage.glyphs.index(left)
+                        record = next(
+                            (
+                                record
+                                for record in subtable.PairSet[index].PairValueRecord
+                                if record.SecondGlyph == right
+                            ),
+                            None,
+                        )
+                        if record is None:
+                            continue
+                    else:
+                        row = subtable.ClassDef1.classDefs.get(left, 0)
+                        column = subtable.ClassDef2.classDefs.get(right, 0)
+                        record = subtable.Class1Record[row].Class2Record[column]
+                    for output, value in zip(result, (record.Value1, record.Value2)):
+                        for index, field in enumerate(fields):
+                            output[index] += getattr(value, field, 0)
+                    break
+            return tuple(tuple(value) for value in result)
+
+        for left in "ABCDEFGH":
+            for right in ("comma", "semicolon", "period", "space"):
+                expected = (0, 0, 0, 0)
+                if right != "space":
+                    if left == "A":
+                        expected = (0, 0, 1, 0)
+                    elif left in "BC" and right == "comma":
+                        expected = (0, 0, 2, 0)
+                    elif left in "DEF":
+                        expected = (0, 0, 3 if right == "comma" else 4, 0)
+                    elif left == "G":
+                        expected = (5, 5, 5, 5)
+                self.assertEqual(
+                    adjustments(left, right), (expected, (0, 0, 0, 0)), (left, right)
+                )
+
 
 def generate_feature_file_test(name):
     return lambda self: self.check_feature_file(name)

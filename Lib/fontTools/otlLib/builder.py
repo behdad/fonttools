@@ -5,6 +5,7 @@ import itertools
 from typing import Dict, Union
 from fontTools.misc.fixedTools import fixedToFloat
 from fontTools.misc.roundTools import otRound
+from fontTools.misc.classifyTools import classify
 from fontTools import ttLib
 from fontTools.ttLib.tables import otTables as ot
 from fontTools.ttLib.tables.otBase import (
@@ -1652,6 +1653,9 @@ class ClassPairPosSubtableBuilder(object):
     but builds a list of ``otTables.PairPos`` subtables. It is used by the
     :class:`PairPosBuilder` below.
 
+    Partitions input classes when overlapping first-glyph coverages would hide
+    pairs. Explicit subtable breaks remain separate.
+
     Attributes:
         builder (PairPosBuilder): A pair positioning lookup builder.
     """
@@ -1660,6 +1664,7 @@ class ClassPairPosSubtableBuilder(object):
         self.builder_ = builder
         self.classDef1_, self.classDef2_ = None, None
         self.values_ = {}  # (glyphclass1, glyphclass2) --> (value1, value2)
+        self.pending_ = []  # Completed batches within the current explicit block.
         self.forceSubtableBreak_ = False
         self.subtables_ = []
 
@@ -1682,7 +1687,10 @@ class ClassPairPosSubtableBuilder(object):
             and self.classDef2_.canAdd(gc2)
         )
         if not mergeable:
-            self.flush_()
+            if self.forceSubtableBreak_:
+                self.flush_()
+            elif self.values_:
+                self.pending_.append(self.values_)
             self.classDef1_ = ClassDefBuilder(useClass0=True)
             self.classDef2_ = ClassDefBuilder(useClass0=False)
             self.values_ = {}
@@ -1701,12 +1709,113 @@ class ClassPairPosSubtableBuilder(object):
 
     def flush_(self):
         if self.classDef1_ is None or self.classDef2_ is None:
+            self.forceSubtableBreak_ = False
             return
-        st = buildPairPosClassesSubtable(self.values_, self.builder_.glyphMap)
-        if st.Coverage is None:
-            return
-        self.subtables_.append(st)
+        batches = [*self.pending_, self.values_]
+        subtables = []
+        for group in self.groupBatches_(batches):
+            if len(group) == 1:
+                st = buildPairPosClassesSubtable(group[0], self.builder_.glyphMap)
+                if st.Coverage is not None:
+                    subtables.append(st)
+            else:
+                subtables.extend(self.buildOverlappingSubtables_(group))
+        self.subtables_.extend(subtables)
+        self.classDef1_ = self.classDef2_ = None
+        self.values_ = {}
+        self.pending_ = []
         self.forceSubtableBreak_ = False
+
+    @staticmethod
+    def groupBatches_(batches):
+        # Only batches connected by first-glyph coverage need repartitioning.
+        # Combining unrelated batches can turn many small matrices into one
+        # quadratic matrix, before GPOS compaction has a chance to run.
+        parents = list(range(len(batches)))
+
+        def find(index):
+            while parents[index] != index:
+                parents[index] = parents[parents[index]]
+                index = parents[index]
+            return index
+
+        owners = {}
+        for index, values in enumerate(batches):
+            coverage = {glyph for gc1, _ in values for glyph in gc1}
+            for glyph in coverage:
+                other = owners.setdefault(glyph, index)
+                root1, root2 = find(index), find(other)
+                if root1 != root2:
+                    parents[max(root1, root2)] = min(root1, root2)
+        groups = {}
+        for index, values in enumerate(batches):
+            groups.setdefault(find(index), []).append(values)
+        return groups.values()
+
+    def buildOverlappingSubtables_(self, batches):
+        # Keep the legacy batches' exact-pair replacement and first-match
+        # priority, but do not let their implicit class0 cells hide rules.
+        pairs = list(
+            itertools.chain.from_iterable(values.items() for values in batches)
+        )
+        classes1, _ = classify((pair[0][0] for pair in pairs), sort=False)
+        classes2, _ = classify((pair[0][1] for pair in pairs), sort=False)
+        classes1 = [tuple(sorted(group)) for group in classes1]
+        classes2 = [tuple(sorted(group)) for group in classes2]
+        classMap1 = {
+            glyph: index for index, group in enumerate(classes1) for glyph in group
+        }
+        classMap2 = {
+            glyph: index for index, group in enumerate(classes2) for glyph in group
+        }
+        classPairs = {}
+        for (gc1, gc2), value in pairs:
+            for pair in itertools.product(
+                {classMap1[glyph] for glyph in gc1},
+                {classMap2[glyph] for glyph in gc2},
+            ):
+                classPairs.setdefault(pair, value)
+
+        # A nonzero ValueFormat2 consumes the second glyph, even when its
+        # adjustment is zero. Preserve the first matching batch's behavior
+        # for each first-glyph class, including its implicit class0 cells.
+        formats2 = {}
+        for values in batches:
+            valueFormat2 = _getValueFormat(None, values.values(), 1)
+            for gc1, _ in values:
+                for glyph in gc1:
+                    formats2.setdefault(glyph, valueFormat2)
+        oneSided, twoSided, exceptions = {}, {}, {}
+        twoSidedFormat = 0
+        for (c1, c2), (value1, value2) in classPairs.items():
+            gc1, gc2 = classes1[c1], classes2[c2]
+            valueFormat2 = formats2[gc1[0]]
+            if valueFormat2:
+                twoSided[(gc1, gc2)] = (value1, value2)
+                twoSidedFormat |= valueFormat2
+            else:
+                oneSided[(gc1, gc2)] = (value1, None)
+                if value2 is not None and value2.getFormat():
+                    # These newly reachable two-sided rules must consume the
+                    # second glyph without changing adjacent one-sided rules.
+                    # Glyph-pair subtables can fall through on a missing pair.
+                    for pair in itertools.product(gc1, gc2):
+                        exceptions[pair] = (value1, value2)
+
+        glyphMap = self.builder_.glyphMap
+        subtables = buildPairPosGlyphs(exceptions, glyphMap)
+        if oneSided:
+            subtables.append(
+                buildPairPosClassesSubtable(oneSided, glyphMap, valueFormat2=0)
+            )
+        if twoSided:
+            twoSidedFormat |= _getValueFormat(None, twoSided.values(), 1)
+            subtables.append(
+                buildPairPosClassesSubtable(
+                    twoSided, glyphMap, valueFormat2=twoSidedFormat
+                )
+            )
+        return subtables
 
 
 class PairPosBuilder(LookupBuilder):
@@ -2431,11 +2540,9 @@ def buildPairPosClassesSubtable(pairs, glyphMap, valueFormat1=None, valueFormat2
 
     Note that if you are implementing a layout compiler, you may find it more
     flexible to use
-    :py:class:`fontTools.otlLib.lookupBuilders.ClassPairPosSubtableBuilder`
-    instead, as this takes care of ensuring that the supplied pairs can be
-    formed into non-overlapping classes and emitting individual subtables
-    whenever the non-overlapping requirement means that a new subtable is
-    required.
+    :py:class:`fontTools.otlLib.builder.ClassPairPosSubtableBuilder`
+    instead, which partitions overlapping input classes and preserves explicit
+    subtable breaks.
 
     Example::
 

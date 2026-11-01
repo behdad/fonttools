@@ -5,6 +5,7 @@ from fontTools.misc.testTools import getXML
 from fontTools.otlLib import builder, error
 from fontTools import ttLib
 from fontTools.ttLib.tables import otTables
+from fontTools.ttLib.tables.otBase import OTTableReader, OTTableWriter
 import pytest
 
 
@@ -954,6 +955,205 @@ class BuilderTest(object):
             ExtendedGlyphMap(self.GLYPHMAP),
         )
         assert subtable.Format == 4
+
+    @pytest.mark.parametrize("wide", [False, True])
+    @pytest.mark.parametrize("extension", [False, True])
+    @pytest.mark.parametrize(
+        "rules,expected",
+        [
+            (
+                [(("a",), ("b",), -50), (("a", "aacute"), ("c",), -100)],
+                {
+                    ("a", "b"): -50,
+                    ("a", "c"): -100,
+                    ("aacute", "c"): -100,
+                    ("aacute", "b"): 0,
+                },
+            ),
+            (
+                [(("a",), ("b", "c"), -50), (("a",), ("c", "d"), -100)],
+                {("a", "b"): -50, ("a", "c"): -50, ("a", "d"): -100},
+            ),
+            (
+                [(("a", "aacute"), ("b", "c"), -50), (("a", "x"), ("c", "d"), -100)],
+                {("a", "c"): -50, ("a", "d"): -100, ("x", "c"): -100, ("x", "b"): 0},
+            ),
+            (
+                [(("a",), ("b",), -50), (("a",), ("b",), -100)],
+                {("a", "b"): -100},
+            ),
+            (
+                [
+                    (("a",), ("b",), -50),
+                    (("a", "aacute"), ("b", "c"), -100),
+                    (("a",), ("b",), -150),
+                ],
+                {("a", "b"): -50, ("a", "c"): -100, ("aacute", "b"): -100},
+            ),
+            (
+                [(("a",), ("b",), -50), None, (("a", "aacute"), ("c",), -100)],
+                {("a", "b"): -50, ("a", "c"): 0, ("aacute", "c"): -100},
+            ),
+            (
+                [
+                    (("a",), ("b", "c"), -30),
+                    (("d",), ("c", "x"), -60),
+                    (("a", "aacute"), ("x",), -90),
+                ],
+                {
+                    ("a", "c"): -30,
+                    ("a", "x"): -90,
+                    ("d", "c"): -60,
+                    ("d", "x"): -60,
+                    ("aacute", "x"): -90,
+                },
+            ),
+        ],
+    )
+    def test_class_pair_overlap_roundtrip(self, rules, expected, extension, wide):
+        font = ttLib.TTFont()
+        glyphs = [".notdef"]
+        if wide:
+            glyphs.extend(f"padding{i}" for i in range(0x10000))
+        glyphs.extend(["a", "aacute", "b", "c", "d", "x"])
+        font.setGlyphOrder(glyphs)
+        lookup_builder = builder.PairPosBuilder(font, None)
+        subtable_builder = builder.ClassPairPosSubtableBuilder(lookup_builder)
+        for rule in rules:
+            if rule is None:
+                subtable_builder.addSubtableBreak()
+                continue
+            left, right, advance = rule
+            subtable_builder.addPair(
+                left, builder.buildValue({"XAdvance": advance}), right, None
+            )
+        lookup = builder.buildLookup(
+            subtable_builder.subtables(), table="GPOS", extension=extension
+        )
+        writer = OTTableWriter(tableTag="GPOS")
+        lookup.compile(writer, font)
+        reloaded = otTables.Lookup()
+        reloaded.decompile(OTTableReader(writer.getAllData(), tableTag="GPOS"), font)
+        for (left, right), advance in expected.items():
+            actual = 0
+            for subtable in reloaded.SubTable:
+                if extension:
+                    subtable = subtable.ExtSubTable
+                if left not in subtable.Coverage.glyphs:
+                    continue
+                row = subtable.ClassDef1.classDefs.get(left, 0)
+                column = subtable.ClassDef2.classDefs.get(right, 0)
+                value = subtable.Class1Record[row].Class2Record[column].Value1
+                actual = getattr(value, "XAdvance", 0)
+                break
+            assert actual == advance, (left, right)
+
+    @pytest.mark.parametrize("wide", [False, True])
+    @pytest.mark.parametrize("extension", [False, True])
+    @pytest.mark.parametrize("compression", [0, 9])
+    @pytest.mark.parametrize("first_has_value2", [False, True])
+    def test_class_pair_overlap_second_glyph(
+        self, wide, extension, compression, first_has_value2
+    ):
+        font = ttLib.TTFont()
+        glyphs = [".notdef"]
+        if wide:
+            glyphs.extend(f"padding{i}" for i in range(0x10000))
+        glyphs.extend(["a", "aacute", "b", "c", "x"])
+        font.setGlyphOrder(glyphs)
+        font.cfg["fontTools.otlLib.optimize.gpos:COMPRESSION_LEVEL"] = compression
+        lookup_builder = builder.PairPosBuilder(font, None)
+        lookup_builder.extension = extension
+        value2 = builder.buildValue({"XPlacement": 10})
+        lookup_builder.addClassPair(
+            None,
+            ("a",),
+            builder.buildValue({"XAdvance": -50}),
+            ("b",),
+            value2 if first_has_value2 else None,
+        )
+        lookup_builder.addClassPair(
+            None,
+            ("a", "aacute"),
+            builder.buildValue({"XAdvance": -100}),
+            ("c",),
+            None if first_has_value2 else value2,
+        )
+        lookup_builder.addClassPair(
+            None, ("b",), builder.buildValue({"XAdvance": -30}), ("c",), None
+        )
+        lookup_builder.add_subtable_break(None)
+        lookup_builder.addClassPair(
+            None,
+            ("a", "aacute"),
+            builder.buildValue({"XAdvance": -200}),
+            ("x",),
+            None,
+        )
+        lookup = lookup_builder.build()
+        writer = OTTableWriter(tableTag="GPOS")
+        lookup.compile(writer, font)
+        reloaded = otTables.Lookup()
+        reloaded.decompile(OTTableReader(writer.getAllData(), tableTag="GPOS"), font)
+
+        def pair(left, right):
+            for subtable in reloaded.SubTable:
+                if extension:
+                    subtable = subtable.ExtSubTable
+                if left not in subtable.Coverage.glyphs:
+                    continue
+                if subtable.Format in (1, 3):
+                    index = subtable.Coverage.glyphs.index(left)
+                    record = next(
+                        (
+                            record
+                            for record in subtable.PairSet[index].PairValueRecord
+                            if record.SecondGlyph == right
+                        ),
+                        None,
+                    )
+                    if record is None:
+                        continue
+                else:
+                    row = subtable.ClassDef1.classDefs.get(left, 0)
+                    column = subtable.ClassDef2.classDefs.get(right, 0)
+                    record = subtable.Class1Record[row].Class2Record[column]
+                return (
+                    getattr(record.Value1, "XAdvance", 0),
+                    getattr(record.Value2, "XPlacement", 0),
+                    bool(subtable.ValueFormat2),
+                )
+            return None
+
+        # With no Value2 for a/b, b must remain eligible for b/c in "abc".
+        assert pair("a", "b") == (-50, 10 if first_has_value2 else 0, first_has_value2)
+        assert pair("b", "c") == (-30, 0, not first_has_value2)
+        assert pair("a", "c") == (-100, 0 if first_has_value2 else 10, True)
+        assert pair("aacute", "c") == (
+            -100,
+            0 if first_has_value2 else 10,
+            not first_has_value2,
+        )
+        # The original first matching subtable also determines how an
+        # unlisted second glyph is consumed, even when no adjustment applies.
+        assert pair("a", "x") == (0, 0, first_has_value2)
+
+    def test_class_pair_overlap_keeps_disjoint_batches_small(self):
+        count = 40
+        left = [f"left{i}" for i in range(count)]
+        right = [f"right{i}" for i in range(count + 1)]
+        font = ttLib.TTFont()
+        font.setGlyphOrder([".notdef", *left, *right])
+        lookup_builder = builder.PairPosBuilder(font, None)
+        subtable_builder = builder.ClassPairPosSubtableBuilder(lookup_builder)
+        value = builder.buildValue({"XAdvance": -10})
+        for i in range(count):
+            subtable_builder.addPair((left[i],), value, tuple(right[i : i + 2]), None)
+        subtable_builder.addPair((left[0],), value, tuple(right[:2]), None)
+        subtables = subtable_builder.subtables()
+        # A repeated rule must not turn these small, disjoint first-glyph
+        # coverages into a dense matrix of all left and right classes.
+        assert sum(st.Class1Count * st.Class2Count for st in subtables) <= count * 4
 
     def test_buildPairPosGlyphs(self):
         d50 = builder.buildValue({"XPlacement": -50})
