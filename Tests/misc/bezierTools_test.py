@@ -242,6 +242,8 @@ def test_collinear_vertical_lines_do_not_intersect():
         (((0, 0), (1, 1)), ((5, 0), (5, 1))),
         (((5, 0), (5, 1)), ((0, 0), (1, 1))),
         (((0, 0), (1, 1)), ((5, 0), (6, -1))),
+        (((0, 5), (10, 5)), ((3, 0), (3, 1))),
+        (((3, 0), (3, 1)), ((0, 5), (10, 5))),
     ],
 )
 def test_line_line_intersections_outside_segments(line1, line2):
