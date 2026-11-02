@@ -237,6 +237,22 @@ class TTGlyphSetTest(object):
 
         assert actual == expected, (location, actual, expected)
 
+    @pytest.mark.parametrize("location", [{}, {"wght": 1000}])
+    def test_cff2_glyphset_from_xml(self, location):
+        font = TTFont(self.getpath("I.otf"))
+        expected = RecordingPen()
+        font.getGlyphSet(location=location)["I"].draw(expected)
+
+        xml = BytesIO()
+        font.saveXML(xml)
+        xml.seek(0)
+        from_xml = TTFont()
+        from_xml.importXML(xml)
+
+        actual = RecordingPen()
+        from_xml.getGlyphSet(location=location)["I"].draw(actual)
+        assert actual.value == expected.value
+
     @pytest.mark.parametrize("initial", [{}, {"wght": 0.75, "CNTR": 0.5}])
     @pytest.mark.parametrize("reset", [False, True])
     def test_cff2_push_location_inherits_and_restores(self, initial, reset):
