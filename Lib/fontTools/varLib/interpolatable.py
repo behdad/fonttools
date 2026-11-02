@@ -158,13 +158,15 @@ def test_gen(
         glyphsets, locations, discrete_axes=discrete_axes
     )
 
-    def grand_parent(i, glyphname):
+    def grand_parent(i, allGlyphs):
         if i is None:
             return None
         i = parents[i]
         if i is None:
             return None
-        while parents[i] is not None and glyphsets[i][glyphname] is None:
+        # Missing and empty glyphs are both skipped by the pair comparisons.
+        # Walk past either kind of intermediate to reach a usable ancestor.
+        while parents[i] is not None and not allGlyphs[i].nodeTypes:
             i = parents[i]
         return i
 
@@ -211,7 +213,7 @@ def test_gen(
             glyph1 = allGlyphs[m1idx]
             if glyph1 is None or not glyph1.nodeTypes:
                 continue
-            m0idx = grand_parent(m1idx, glyph_name)
+            m0idx = grand_parent(m1idx, allGlyphs)
             if m0idx is None:
                 continue
             glyph0 = allGlyphs[m0idx]
@@ -707,6 +709,7 @@ def main(args=None):
     fonts = []
     names = []
     locations = []
+    sparse = None
     discrete_axes = set()
     upem = DEFAULT_UPEM
 
@@ -735,6 +738,16 @@ def main(args=None):
                 k: tuple(piecewiseLinearMap(v, dict(axis_mappings[k])) for v in vv)
                 for k, vv in axis_triples.items()
             }
+            # Any non-default Designspace source can omit glyphs, even when
+            # it uses a separate UFO's default layer. Each discrete subspace
+            # has its own default at the continuous axes' default location.
+            sparse = [
+                any(
+                    loc.get(k, triple[1]) != triple[1]
+                    for k, triple in axis_triples.items()
+                )
+                for loc in locations
+            ]
 
         elif args.inputs[0].endswith((".glyphs", ".glyphspackage")):
             from glyphsLib import GSFont, to_designspace
@@ -900,7 +913,6 @@ def main(args=None):
     if not locations:
         locations = [{} for _ in fonts]
 
-    sparse = [False] * len(fonts)
     for filename in args.inputs:
         layerName = None
         if isinstance(filename, tuple):
@@ -914,21 +926,20 @@ def main(args=None):
             font.readInfo(info)
             upem = info.unitsPerEm
             fonts.append(font.getGlyphSet(layerName=layerName))
-            sparse.append(
-                layerName is not None and layerName != font.getDefaultLayerName()
-            )
         else:
             from fontTools.ttLib import TTFont
 
             font = TTFont(filename)
             upem = font["head"].unitsPerEm
             fonts.append(font)
-            sparse.append(False)
 
         name = basename(filename).rsplit(".", 1)[0]
         if layerName is not None:
             name += " (%s)" % layerName
         names.append(name)
+
+    if sparse is None:
+        sparse = [False] * len(fonts)
 
     if len(fonts) < 2:
         log.warning("Font file does not seem to be variable. Nothing to check.")

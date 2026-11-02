@@ -289,23 +289,7 @@ class InterpolatableTest(unittest.TestCase):
     def test_sparse_designspace(self):
         designspace_path = self.get_test_input("SparseMasters_ufo.designspace")
 
-        problems = interpolatable_main(["--quiet", designspace_path])
-        self.assertEqual(
-            problems["a"],
-            [{"type": "missing", "master": "SparseMasters-Medium", "master_idx": 1}],
-        )
-        self.assertEqual(
-            problems["s"],
-            [{"type": "missing", "master": "SparseMasters-Medium", "master_idx": 1}],
-        )
-        self.assertEqual(
-            problems["edotabove"],
-            [{"type": "missing", "master": "SparseMasters-Medium", "master_idx": 1}],
-        )
-        self.assertEqual(
-            problems["dotabovecomb"],
-            [{"type": "missing", "master": "SparseMasters-Medium", "master_idx": 1}],
-        )
+        self.assertIsNone(interpolatable_main(["--quiet", designspace_path]))
 
         # normal order, with --ignore-missing
         self.assertIsNone(interpolatable_main(["--ignore-missing", designspace_path]))
@@ -481,22 +465,30 @@ def test_designspace_sparse_layer(layered_designspace):
     assert interpolatable_main(["--ignore-missing"] + args) is None
 
 
-@pytest.mark.parametrize("layer", [None, "public.default", "foreground"])
+@pytest.mark.parametrize(
+    "layer", [None, "public.default", "foreground", "intermediate"]
+)
 @pytest.mark.parametrize("filter_names", [False, True])
-def test_designspace_sparse_layer_missing_full_master(
+def test_designspace_missing_default_source(
     layered_designspace, tmp_path, layer, filter_names
 ):
-    # A is present in the regular and intermediate layers, but missing from
-    # the full master, even when its default layer is explicitly named.
+    # Completeness is required at the Designspace default, regardless of
+    # which UFO layer it uses.
     path = tmp_path / "Missing.ufo"
     with UFOWriter(path, formatVersion=3) as writer:
         writer.writeInfo(SimpleNamespace(unitsPerEm=1000))
-        glyphset = writer.getGlyphSet(layerName=layer, defaultLayer=True)
+        if layer == "intermediate":
+            glyphset = writer.getGlyphSet()
+            glyphset.writeGlyph("A", SimpleNamespace(width=500), draw_contours(1))
+            glyphset.writeContents()
+        glyphset = writer.getGlyphSet(
+            layerName=layer, defaultLayer=layer != "intermediate"
+        )
         glyphset.writeGlyph("B", SimpleNamespace(width=500), draw_contours(1))
         glyphset.writeContents()
         writer.writeLayerContents()
-    layered_designspace.sources[-1].path = str(path)
-    layered_designspace.sources[-1].layerName = layer
+    layered_designspace.sources[0].path = str(path)
+    layered_designspace.sources[0].layerName = layer
     name = "Missing" if layer is None else f"Missing ({layer})"
     args = ["--quiet", "--glyphs", "A"]
     if filter_names:
@@ -510,13 +502,13 @@ def test_designspace_sparse_layer_missing_full_master(
             path=path, layerName="unused", location={"Weight": 250}
         )
         layered_designspace.sources.insert(0, source)
-        for accepted_name in ["Regular", "Regular (intermediate)", name]:
+        for accepted_name in [name, "Regular (intermediate)", "Bold"]:
             args.extend(["--name", accepted_name])
     layered_designspace.write(layered_designspace.path)
     args.append(layered_designspace.path)
     problems = interpolatable_main(args)["A"]
     assert [p for p in problems if p["type"] == "missing"] == [
-        {"type": "missing", "master": name, "master_idx": 2}
+        {"type": "missing", "master": name, "master_idx": 0}
     ]
     assert not any(
         p["type"] == "missing"
@@ -524,11 +516,81 @@ def test_designspace_sparse_layer_missing_full_master(
     )
 
 
+@pytest.mark.parametrize("layer", [None, "public.default", "foreground"])
+@pytest.mark.parametrize("axes", ["continuous", "decreasing", "discrete"])
+def test_designspace_sparse_source(layered_designspace, tmp_path, layer, axes):
+    path = tmp_path / "Medium.ufo"
+    with UFOWriter(path, formatVersion=3) as writer:
+        writer.writeInfo(SimpleNamespace(unitsPerEm=1000))
+        glyphset = writer.getGlyphSet(layerName=layer, defaultLayer=True)
+        glyphset.writeGlyph("A", SimpleNamespace(width=500), draw_contours(1))
+        glyphset.writeContents()
+        writer.writeLayerContents()
+    layered_designspace.sources[1].path = str(path)
+    layered_designspace.sources[1].layerName = layer
+    # Put the sparse source first and the actual default last.
+    regular, medium, bold = layered_designspace.sources
+    layered_designspace.sources = [medium, bold, regular]
+    if axes == "decreasing":
+        layered_designspace.axes[0].map = [(100, 900), (900, 100)]
+        for source in layered_designspace.sources:
+            source.location["Weight"] = 1000 - source.location["Weight"]
+    elif axes == "discrete":
+        axis = DiscreteAxisDescriptor()
+        axis.name, axis.tag, axis.values, axis.default = "Style", "STYL", [0, 1], 0
+        layered_designspace.addAxis(axis)
+        for source in layered_designspace.sources:
+            source.location["Style"] = 1
+        layered_designspace.addSourceDescriptor(
+            path=regular.path, location={"Weight": 100, "Style": 0}
+        )
+    layered_designspace.write(layered_designspace.path)
+    assert (
+        interpolatable_main(["--quiet", "--glyphs", "B", layered_designspace.path])
+        is None
+    )
+
+
+def test_designspace_missing_discrete_default(layered_designspace):
+    axis = DiscreteAxisDescriptor()
+    axis.name, axis.tag, axis.values, axis.default = "Style", "STYL", [0, 1], 0
+    layered_designspace.addAxis(axis)
+    # The named layer contains A but lacks B. At the continuous default
+    # location it must still report B as missing, even in discrete subspace 1.
+    layered_designspace.addSourceDescriptor(
+        path=layered_designspace.sources[0].path,
+        layerName="intermediate",
+        location={"Weight": 100, "Style": 1},
+    )
+    layered_designspace.addSourceDescriptor(
+        path=layered_designspace.sources[2].path,
+        location={"Weight": 900, "Style": 1},
+    )
+    layered_designspace.write(layered_designspace.path)
+    problems = interpolatable_main(
+        ["--quiet", "--glyphs", "B", layered_designspace.path]
+    )
+    assert problems["B"] == [
+        {"type": "missing", "master": "Regular (intermediate)", "master_idx": 3}
+    ]
+
+
 @pytest.mark.parametrize("extra_sparse_source", [False, True])
-def test_designspace_sparse_layer_comparison(layered_designspace, extra_sparse_source):
+@pytest.mark.parametrize("empty_intermediate", [False, True])
+@pytest.mark.parametrize("bold_contours", [1, 2])
+def test_designspace_sparse_layer_comparison(
+    layered_designspace, extra_sparse_source, empty_intermediate, bold_contours
+):
+    if empty_intermediate:
+        with UFOWriter(layered_designspace.sources[0].path) as writer:
+            glyphset = writer.getGlyphSet(layerName="intermediate", defaultLayer=False)
+            glyphset.writeGlyph("B", SimpleNamespace(width=500), draw_contours(0))
+            glyphset.writeContents()
     with UFOWriter(layered_designspace.sources[-1].path) as writer:
         glyphset = writer.getGlyphSet()
-        glyphset.writeGlyph("B", SimpleNamespace(width=500), draw_contours(2))
+        glyphset.writeGlyph(
+            "B", SimpleNamespace(width=500), draw_contours(bold_contours)
+        )
         glyphset.writeContents()
     if extra_sparse_source:
         source = SourceDescriptor(
@@ -538,19 +600,19 @@ def test_designspace_sparse_layer_comparison(layered_designspace, extra_sparse_s
         )
         layered_designspace.sources.insert(2, source)
     layered_designspace.write(layered_designspace.path)
-    assert interpolatable_main(["--quiet", "--glyphs", "B", layered_designspace.path])[
-        "B"
-    ] == [
-        {
-            "type": "path_count",
-            "master_1": "Regular",
-            "master_2": "Bold",
-            "master_1_idx": 0,
-            "master_2_idx": len(layered_designspace.sources) - 1,
-            "value_1": 1,
-            "value_2": 2,
-        }
-    ]
+    expected = {
+        "type": "nothing" if bold_contours == 1 else "path_count",
+        "master_1": "Regular",
+        "master_2": "Bold",
+        "master_1_idx": 0,
+        "master_2_idx": len(layered_designspace.sources) - 1,
+    }
+    if bold_contours != 1:
+        expected.update(value_1=1, value_2=bold_contours)
+    problems = interpolatable_main(
+        ["--quiet", "--show-all", "--glyphs", "B", layered_designspace.path]
+    )
+    assert problems["B"] == [expected]
 
 
 def test_designspace_sparse_layer_open_path(layered_designspace):
