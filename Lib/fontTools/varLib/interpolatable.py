@@ -131,6 +131,7 @@ def test_gen(
     ignore_missing=False,
     *,
     locations=None,
+    sparse=None,
     tolerance=DEFAULT_TOLERANCE,
     kinkiness=DEFAULT_KINKINESS,
     upem=DEFAULT_UPEM,
@@ -145,6 +146,8 @@ def test_gen(
     assert 0 <= kinkiness
 
     names = names or [repr(g) for g in glyphsets]
+    if sparse is None:
+        sparse = [False] * len(glyphsets)
 
     if glyphs is None:
         # `glyphs = glyphsets[0].keys()` is faster, certainly, but doesn't allow for sparse TTFs/OTFs given out of order
@@ -174,7 +177,7 @@ def test_gen(
             zip(allGlyphs, glyphsets, names)
         ):
             if glyph.doesnt_exist:
-                if not ignore_missing:
+                if not ignore_missing and not sparse[master_idx]:
                     yield (
                         glyph_name,
                         {
@@ -897,6 +900,7 @@ def main(args=None):
     if not locations:
         locations = [{} for _ in fonts]
 
+    sparse = [False] * len(fonts)
     for filename in args.inputs:
         layerName = None
         if isinstance(filename, tuple):
@@ -910,12 +914,16 @@ def main(args=None):
             font.readInfo(info)
             upem = info.unitsPerEm
             fonts.append(font.getGlyphSet(layerName=layerName))
+            sparse.append(
+                layerName is not None and layerName != font.getDefaultLayerName()
+            )
         else:
             from fontTools.ttLib import TTFont
 
             font = TTFont(filename)
             upem = font["head"].unitsPerEm
             fonts.append(font)
+            sparse.append(False)
 
         name = basename(filename).rsplit(".", 1)[0]
         if layerName is not None:
@@ -944,6 +952,11 @@ def main(args=None):
         locations = [
             location
             for name, location in zip(names, locations)
+            if name in accepted_names
+        ]
+        sparse = [
+            is_sparse
+            for name, is_sparse in zip(names, sparse)
             if name in accepted_names
         ]
         names = [name for name in names if name in accepted_names]
@@ -978,6 +991,7 @@ def main(args=None):
             glyphs=glyphs,
             names=names,
             locations=locations,
+            sparse=sparse,
             upem=upem,
             ignore_missing=args.ignore_missing,
             tolerance=tolerance,
