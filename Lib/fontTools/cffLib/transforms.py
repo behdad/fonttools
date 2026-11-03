@@ -299,12 +299,10 @@ def _cs_subset_subroutines(charstring, subrs, gsubrs):
     for i in range(1, len(p)):
         if p[i] == "callsubr":
             assert isinstance(p[i - 1], int)
-            p[i - 1] = subrs._used.index(p[i - 1] + subrs._old_bias) - subrs._new_bias
+            p[i - 1] = subrs._used[p[i - 1] + subrs._old_bias] - subrs._new_bias
         elif p[i] == "callgsubr":
             assert isinstance(p[i - 1], int)
-            p[i - 1] = (
-                gsubrs._used.index(p[i - 1] + gsubrs._old_bias) - gsubrs._new_bias
-            )
+            p[i - 1] = gsubrs._used[p[i - 1] + gsubrs._old_bias] - gsubrs._new_bias
 
 
 def _cs_drop_hints(charstring):
@@ -448,7 +446,8 @@ def remove_unused_subroutines(cff):
         for subrs in all_subrs:
             if not hasattr(subrs, "_used"):
                 subrs._used = set()
-            subrs._used = _uniq_sort(subrs._used)
+            # Preserve the subroutine order while mapping old indices to new ones.
+            subrs._used = {old: new for new, old in enumerate(_uniq_sort(subrs._used))}
             subrs._old_bias = calcSubrBias(subrs)
             subrs._new_bias = calcSubrBias(subrs._used)
 
