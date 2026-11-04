@@ -116,7 +116,10 @@ charStrings = {
     ".null": charString,
 }
 fb.setupCFF(nameStrings["psName"], {"FullName": nameStrings["psName"]}, charStrings, {})
-lsb = {gn: cs.calcBounds(None)[0] for gn, cs in charStrings.items()}
+lsb = {}
+for gn, cs in charStrings.items():
+    bounds = cs.calcBounds(None)
+    lsb[gn] = bounds[0] if bounds is not None else 0
 metrics = {}
 for gn, advanceWidth in advanceWidths.items():
     metrics[gn] = (advanceWidth, lsb[gn])
