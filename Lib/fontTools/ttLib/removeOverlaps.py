@@ -109,6 +109,7 @@ def _simplify(
     debugGlyphName: str,
     *,
     round: Callable[[float], float] = otRound,
+    clockwise: Optional[bool] = None,
 ) -> pathops.Path:
     # skia-pathops has a bug where it sometimes fails to simplify paths when there
     # are float coordinates and control points are very close to one another.
@@ -120,13 +121,17 @@ def _simplify(
     # https://github.com/google/fonts/issues/3365
     # TODO(anthrotype): remove once this Skia bug is fixed
     try:
-        return pathops.simplify(path, clockwise=path.clockwise)
+        return pathops.simplify(
+            path, clockwise=path.clockwise if clockwise is None else clockwise
+        )
     except pathops.PathOpsError:
         pass
 
     path = _round_path(path, round=round)
     try:
-        path = pathops.simplify(path, clockwise=path.clockwise)
+        path = pathops.simplify(
+            path, clockwise=path.clockwise if clockwise is None else clockwise
+        )
         log.debug(
             "skia-pathops failed to simplify '%s' with float coordinates, "
             "but succeded using rounded integer coordinates",
@@ -153,18 +158,20 @@ def removeTTGlyphOverlaps(
     glyfTable: _g_l_y_f.table__g_l_y_f,
     hmtxTable: _h_m_t_x.table__h_m_t_x,
     removeHinting: bool = True,
+    *,
+    fixWinding: bool = False,
 ) -> bool:
     glyph = glyfTable[glyphName]
-    # decompose composite glyphs only if components overlap each other
+    # Also check non-overlapping composites when their winding may need correction.
     if (
         glyph.numberOfContours > 0
         or glyph.isComposite()
-        and componentsOverlap(glyph, glyphSet)
+        and (fixWinding or componentsOverlap(glyph, glyphSet))
     ):
         path = skPathFromGlyph(glyphName, glyphSet)
 
         # remove overlaps
-        path2 = _simplify(path, glyphName)
+        path2 = _simplify(path, glyphName, clockwise=True if fixWinding else None)
 
         # replace TTGlyph if simplified path is different (ignoring contour order)
         if not _same_path(path, path2):
@@ -189,6 +196,7 @@ def _remove_glyf_overlaps(
     glyphSet: _TTGlyphMapping,
     removeHinting: bool,
     ignoreErrors: bool,
+    fixWinding: bool = False,
 ) -> None:
     glyfTag = "GLYF" if "GLYF" in font else "glyf"
     hmtxTag = "HMTX" if glyfTag == "GLYF" else "hmtx"
@@ -216,7 +224,12 @@ def _remove_glyf_overlaps(
     for glyphName in glyphNames:
         try:
             if removeTTGlyphOverlaps(
-                glyphName, glyphSet, glyfTable, hmtxTable, removeHinting
+                glyphName,
+                glyphSet,
+                glyfTable,
+                hmtxTable,
+                removeHinting,
+                fixWinding=fixWinding,
             ):
                 modified.add(glyphName)
         except RemoveOverlapsError:
@@ -232,11 +245,14 @@ def _remove_charstring_overlaps(
     glyphName: str,
     glyphSet: _TTGlyphMapping,
     cffFontSet: CFFFontSet,
+    fixWinding: bool = False,
 ) -> bool:
     path = skPathFromGlyph(glyphName, glyphSet)
 
     # remove overlaps
-    path2 = _simplify(path, glyphName, round=noRound)
+    path2 = _simplify(
+        path, glyphName, round=noRound, clockwise=False if fixWinding else None
+    )
 
     # replace TTGlyph if simplified path is different (ignoring contour order)
     if not _same_path(path, path2):
@@ -256,6 +272,7 @@ def _remove_cff_overlaps(
     ignoreErrors: bool,
     table_tag: str,
     removeUnusedSubroutines: bool = True,
+    fixWinding: bool = False,
 ) -> None:
     cffFontSet = font[table_tag].cff
     modified = set()
@@ -265,6 +282,7 @@ def _remove_cff_overlaps(
                 glyphName=glyphName,
                 glyphSet=glyphSet,
                 cffFontSet=cffFontSet,
+                fixWinding=fixWinding,
             ):
                 modified.add(glyphName)
         except RemoveOverlapsError:
@@ -292,6 +310,7 @@ def removeOverlaps(
     ignoreErrors: bool = False,
     *,
     removeUnusedSubroutines: bool = True,
+    fixWinding: bool = False,
 ) -> None:
     """Simplify glyphs in TTFont by merging overlapping contours.
 
@@ -314,6 +333,11 @@ def removeOverlaps(
         removeUnusedSubroutines (bool): set to False to keep unused subroutines
             in CFF table after removing overlaps. Default is to remove them if
             any glyphs are modified.
+        fixWinding (bool): set to True to use clockwise outer contours for
+            TrueType and counterclockwise outer contours for CFF/CFF2. By default,
+            the existing winding behavior is kept. May also decompose selected
+            composites whose components do not overlap, if their winding needs
+            correction.
     """
 
     if (
@@ -339,6 +363,7 @@ def removeOverlaps(
             glyphSet=glyphSet,
             removeHinting=removeHinting,
             ignoreErrors=ignoreErrors,
+            fixWinding=fixWinding,
         )
 
     if "CFF " in font or "CFF2" in font:
@@ -350,6 +375,7 @@ def removeOverlaps(
             ignoreErrors=ignoreErrors,
             table_tag="CFF " if "CFF " in font else "CFF2",
             removeUnusedSubroutines=removeUnusedSubroutines,
+            fixWinding=fixWinding,
         )
 
 
@@ -387,6 +413,11 @@ def main(args=None):
         help="Keep unused subroutines in CFF table after removing overlaps, "
         "default is to remove them if any glyphs are modified",
     )
+    parser.add_argument(
+        "--fix-winding",
+        action="store_true",
+        help="Use clockwise outer contours for TrueType, counterclockwise for CFF",
+    )
     args = parser.parse_args(args)
 
     with ttFont.TTFont(args.input) as font:
@@ -396,6 +427,7 @@ def main(args=None):
             removeHinting=not args.keep_hinting,
             ignoreErrors=args.ignore_errors,
             removeUnusedSubroutines=not args.keep_unused_subroutines,
+            fixWinding=args.fix_winding,
         )
         font.save(args.output)
 

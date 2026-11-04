@@ -631,6 +631,8 @@ class FontBuilder(object):
         fontSet = CFFFontSet()
         fontSet.major = 2
         fontSet.minor = 0
+        fontSet.otFont = self.font
+        fontSet.fontNames = ["CFF2Font"]
 
         cff2GetGlyphOrder = self.font.getGlyphOrder
         fontSet.topDictIndex = TopDictIndex(None, cff2GetGlyphOrder, None)
@@ -654,6 +656,7 @@ class FontBuilder(object):
             fdArray.append(fontDict)
 
         topDict = TopDict()
+        topDict.GlobalSubrs = globalSubrs
         topDict.cff2GetGlyphOrder = cff2GetGlyphOrder
         topDict.FDArray = fdArray
         scale = 1 / self.font["head"].unitsPerEm

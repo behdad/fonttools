@@ -1,10 +1,10 @@
-import logging
 import pytest
 from pathlib import Path
 
 pathops = pytest.importorskip("pathops")
 
 from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.removeOverlaps import removeOverlaps, _simplify, _round_path
@@ -12,7 +12,7 @@ from fontTools.ttLib.removeOverlaps import removeOverlaps, _simplify, _round_pat
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def test_pathops_simplify_bug_workaround(caplog):
+def test_pathops_simplify_bug_workaround():
     # Paths extracted from Noto Sans Ethiopic instance that fails skia-pathops
     # https://github.com/google/fonts/issues/3365
     # https://bugs.chromium.org/p/skia/issues/detail?id=11958
@@ -35,11 +35,7 @@ def test_pathops_simplify_bug_workaround(caplog):
     with pytest.raises(pathops.PathOpsError):
         pathops.simplify(path)
 
-    # check our workaround works (but with a warning)
-    with caplog.at_level(logging.DEBUG, logger="fontTools.ttLib.removeOverlaps"):
-        result = _simplify(path, debugGlyphName="a")
-
-    assert "skia-pathops failed to simplify 'a' with float coordinates" in caplog.text
+    result = _simplify(path, debugGlyphName="a")
 
     expected = pathops.Path()
     expected.moveTo(550, 0)
@@ -55,6 +51,11 @@ def test_pathops_simplify_bug_workaround(caplog):
     expected.close()
 
     assert expected == _round_path(result, round=lambda v: round(v, 3))
+
+    reversed_result = _simplify(path, debugGlyphName="a", clockwise=False)
+    assert not reversed_result.clockwise
+    assert abs(reversed_result.area) == pytest.approx(abs(result.area))
+    assert reversed_result.bounds == pytest.approx(result.bounds)
 
 
 def test_CFF_CharString_width_nominalWidthX():
@@ -104,3 +105,89 @@ def test_remove_overlaps_beyond64k_glyf():
     assert "HMTX" in fb.font
     assert fb.font["GLYF"]["A"].numberOfContours == 1
     assert fb.font["HMTX"]["A"] == (500, 10)
+
+
+def _winding_font(outline_tag):
+    is_ttf = outline_tag in {"glyf", "GLYF"}
+    fb = FontBuilder(1000, isTTF=is_ttf, beyond64k=outline_tag == "GLYF")
+    fb.setupGlyphOrder([".notdef", "A"])
+    glyphs = {}
+    for name in fb.font.getGlyphOrder():
+        if is_ttf:
+            pen = TTGlyphPen(None)
+        else:
+            pen = T2CharStringPen(
+                None if outline_tag == "CFF2" else 800,
+                None,
+                CFF2=outline_tag == "CFF2",
+            )
+        if name == "A":
+            for points in (
+                [(100, 0), (700, 0), (700, 700), (100, 700)],
+                [(300, 200), (300, 500), (500, 500), (500, 200)],
+            ):
+                if not is_ttf:
+                    points.reverse()
+                pen.moveTo(points[0])
+                for point in points[1:]:
+                    pen.lineTo(point)
+                pen.closePath()
+        glyphs[name] = pen.glyph() if is_ttf else pen.getCharString()
+    if is_ttf:
+        fb.setupGlyf(glyphs)
+    elif outline_tag == "CFF2":
+        fb.setupCFF2(glyphs)
+    else:
+        fb.setupCFF("Winding", {}, glyphs, {})
+    fb.setupHorizontalMetrics({".notdef": (800, 0), "A": (800, 100)})
+    return fb.font
+
+
+def _glyph_path(font, name):
+    glyph_set = font.getGlyphSet()
+    path = pathops.Path()
+    glyph_set[name].draw(path.getPen(glyphSet=glyph_set))
+    return path
+
+
+@pytest.mark.parametrize("outline_tag", ["glyf", "GLYF", "CFF ", "CFF2"])
+@pytest.mark.parametrize("fix_winding", [False, True])
+def test_remove_overlaps_winding(outline_tag, fix_winding):
+    font = _winding_font(outline_tag)
+    is_ttf = outline_tag in {"glyf", "GLYF"}
+    original = _glyph_path(font, "A")
+    assert original.clockwise != is_ttf
+
+    if fix_winding:
+        removeOverlaps(font, fixWinding=True)
+    else:
+        removeOverlaps(font)
+
+    result = _glyph_path(font, "A")
+    assert result.clockwise == (is_ttf if fix_winding else not is_ttf)
+    assert abs(result.area) == pytest.approx(abs(original.area))
+    assert result.bounds == original.bounds
+    hmtx_tag = "HMTX" if outline_tag == "GLYF" else "hmtx"
+    assert font[hmtx_tag]["A"] == (800, 100)
+
+
+@pytest.mark.parametrize("outline_tag", ["glyf", "GLYF"])
+def test_fix_winding_selected_composite(outline_tag):
+    font = _winding_font(outline_tag)
+    pen = TTGlyphPen(font.getGlyphSet())
+    pen.addComponent("A", (1, 0, 0, 1, 0, 0))
+    font[outline_tag]["C"] = pen.glyph()
+    hmtx_tag = "HMTX" if outline_tag == "GLYF" else "hmtx"
+    font[hmtx_tag]["C"] = (800, 100)
+    font.setGlyphOrder([".notdef", "A", "C"])
+    original = _glyph_path(font, "C")
+    assert not original.clockwise
+
+    removeOverlaps(font, ["C"], fixWinding=True)
+
+    result = _glyph_path(font, "C")
+    assert result.clockwise
+    assert abs(result.area) == pytest.approx(abs(original.area))
+    assert result.bounds == original.bounds
+    assert not _glyph_path(font, "A").clockwise
+    assert font[hmtx_tag]["C"] == (800, 100)
