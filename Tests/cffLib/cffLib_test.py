@@ -378,6 +378,39 @@ def _drawGlyphs(font):
     return result
 
 
+@pytest.mark.parametrize("local", [False, True])
+def test_remove_unused_subroutines_sparse_indices(local):
+    from fontTools.cffLib import SubrsIndex
+    from fontTools.misc.psCharStrings import T2CharString
+
+    font = _makeCFF2Font([".notdef"])
+    cff = font["CFF2"].cff
+    top = cff[0]
+    private = top.FDArray[0].Private
+    if local:
+        private.Subrs = SubrsIndex()
+    subrs = private.Subrs if local else cff.GlobalSubrs
+    for i in range(9):
+        subrs.append(
+            T2CharString(
+                program=[i + 1, 0, "rlineto"],
+                private=private,
+                globalSubrs=cff.GlobalSubrs,
+            )
+        )
+    operator = "callsubr" if local else "callgsubr"
+    charstring = top.CharStrings[".notdef"]
+    # Visit old indices 8 then 1; retain them in their original order, 1 then 8.
+    charstring.setProgram([0, 0, "rmoveto", -99, operator, -106, operator])
+    expected = _drawGlyphs(font)
+
+    cff.remove_unused_subroutines()
+
+    assert [subr.program for subr in subrs] == [[2, 0, "rlineto"], [9, 0, "rlineto"]]
+    assert charstring.program == [0, 0, "rmoveto", -106, operator, -107, operator]
+    assert _drawGlyphs(font) == expected
+
+
 def _convertAndReload(font):
     from fontTools.cffLib.CFF2ToCFF import convertCFF2ToCFF
 
