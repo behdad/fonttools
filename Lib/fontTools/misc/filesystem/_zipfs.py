@@ -229,5 +229,10 @@ class WriteZipFS(TempFS):
                 format="zip",
                 root_dir=self._temp_dir,
             )
-            os.replace(archive, self._file)
+            try:
+                os.replace(archive, self._file)
+            except PermissionError:
+                if os.name != "nt":
+                    raise
+                shutil.copyfile(archive, self._file)
         super().close()

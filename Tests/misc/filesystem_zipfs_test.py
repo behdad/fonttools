@@ -2,7 +2,7 @@ import zipfile
 
 import pytest
 
-from fontTools.misc.filesystem._zipfs import WriteZipFS
+from fontTools.misc.filesystem._zipfs import ReadZipFS, WriteZipFS
 
 
 @pytest.mark.parametrize("suffix", [".zip", ".ufoz"])
@@ -119,3 +119,20 @@ def test_writezipfs_archive_failure_preserves_destination(
         assert not staged[0].exists()
     finally:
         fs.clean()
+
+
+@pytest.mark.parametrize("suffix", [".zip", ".ufoz"])
+def test_writezipfs_overwrites_open_archive(tmp_path, suffix):
+    path = tmp_path / f"archive{suffix}"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("original.txt", b"original")
+
+    with ReadZipFS(path) as reader:
+        assert reader.readbytes("original.txt") == b"original"
+        with WriteZipFS(path) as writer:
+            writer.writebytes("updated.txt", b"updated")
+
+    assert [p.name for p in tmp_path.iterdir()] == [path.name]
+    with ReadZipFS(path) as reader:
+        assert reader.listdir("/") == ["updated.txt"]
+        assert reader.readbytes("updated.txt") == b"updated"
