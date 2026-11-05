@@ -9,6 +9,7 @@ from fontTools.misc.bezierTools import (
     curveLineIntersections,
     curveCurveIntersections,
     lineLineIntersections,
+    segmentSegmentIntersections,
     segmentPointAtT,
     splitLine,
     splitQuadratic,
@@ -233,6 +234,41 @@ def test_intersections_straight_line():
 
 def test_collinear_vertical_lines_do_not_intersect():
     assert not lineLineIntersections((310, 0), (310, 10), (310, 800), (310, 810))
+
+
+@pytest.mark.parametrize(
+    ("line1", "line2"),
+    [
+        (((0, 0), (1, 1)), ((5, 0), (5, 1))),
+        (((5, 0), (5, 1)), ((0, 0), (1, 1))),
+        (((0, 0), (1, 1)), ((5, 0), (6, -1))),
+        (((0, 5), (10, 5)), ((3, 0), (3, 1))),
+        (((3, 0), (3, 1)), ((0, 5), (10, 5))),
+    ],
+)
+def test_line_line_intersections_outside_segments(line1, line2):
+    assert not lineLineIntersections(*line1, *line2)
+
+
+def test_segment_segment_intersections_outside_segments():
+    assert not segmentSegmentIntersections([(0, 0), (1, 1)], [(5, 0), (5, 1)])
+
+
+def test_line_line_intersections_at_endpoint():
+    intersections = lineLineIntersections((0, 0), (1, 1), (1, 1), (2, 0))
+    assert len(intersections) == 1
+    assert intersections[0].pt == (1.0, 1.0)
+    assert intersections[0].t1 == pytest.approx(1.0)
+    assert intersections[0].t2 == pytest.approx(0.0)
+
+
+def test_line_line_intersections_at_endpoint_with_rounding_error():
+    intersections = lineLineIntersections(
+        (0, 0), (0.3, 0), (0.1 + 0.2, 0), (0.1 + 0.2, 1)
+    )
+    assert len(intersections) == 1
+    assert intersections[0].t1 == pytest.approx(1.0)
+    assert intersections[0].t2 == pytest.approx(0.0)
 
 
 def test_calcQuadraticArcLength():
