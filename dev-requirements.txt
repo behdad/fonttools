@@ -6,4 +6,4 @@ mypy>=0.782
 readme_renderer[md]>=43.0
 
 # Pin black as each version could change formatting, breaking CI randomly.
-black==26.3.1
+black==26.10.1
