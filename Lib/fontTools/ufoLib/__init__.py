@@ -1388,6 +1388,7 @@ class UFOWriter(UFOReader):
         but it does not check for compliance with the spec in
         regards to conflicting pairs. The assumption is that the
         kerning data being passed is standards compliant.
+        For UFO 3 output, kerning group prefixes must match their pair side.
 
         ``validate`` will validate the data, by default it is set to the
         class's validate value, can be overridden.
@@ -1399,6 +1400,7 @@ class UFOWriter(UFOReader):
             invalidFormatMessage = "The kerning is not properly formatted."
             if not isDictEnough(kerning):
                 raise UFOLibError(invalidFormatMessage)
+            validateGroupSides = self._formatVersion >= UFOFormatVersion.FORMAT_3_0
             for pair, value in list(kerning.items()):
                 if not isinstance(pair, (list, tuple)):
                     raise UFOLibError(invalidFormatMessage)
@@ -1407,6 +1409,11 @@ class UFOWriter(UFOReader):
                 if not isinstance(pair[0], str):
                     raise UFOLibError(invalidFormatMessage)
                 if not isinstance(pair[1], str):
+                    raise UFOLibError(invalidFormatMessage)
+                if validateGroupSides and (
+                    pair[0].startswith("public.kern2.")
+                    or pair[1].startswith("public.kern1.")
+                ):
                     raise UFOLibError(invalidFormatMessage)
                 if not isinstance(value, numberTypes):
                     raise UFOLibError(invalidFormatMessage)

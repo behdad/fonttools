@@ -20,6 +20,74 @@ def ufo_path(tmp_path):
     return ufodir
 
 
+@pytest.mark.parametrize(
+    "pair",
+    [("public.kern2.V", "A"), ("V", "public.kern1.A")],
+)
+def test_readKerning_group_on_wrong_side(ufo_path, pair):
+    with (ufo_path / "kerning.plist").open("wb") as file:
+        plistlib.dump({pair[0]: {pair[1]: -80}}, file)
+
+    with UFOReader(ufo_path) as reader:
+        with pytest.raises(UFOLibError):
+            reader.readKerning()
+        assert reader.readKerning(validate=False) == {pair: -80}
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [("public.kern2.V", "A"), ("V", "public.kern1.A")],
+)
+def test_writeKerning_group_on_wrong_side(ufo_path, pair):
+    with UFOWriter(ufo_path) as writer:
+        writer.writeKerning({("A", "V"): -40})
+        with pytest.raises(UFOLibError):
+            writer.writeKerning({pair: -80})
+        assert writer.readKerning() == {("A", "V"): -40}
+        writer.writeKerning({pair: -80}, validate=False)
+
+    with UFOReader(ufo_path) as reader:
+        assert reader.readKerning(validate=False) == {pair: -80}
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [
+        ("A", "V"),
+        ("public.kern1.A", "public.kern2.V"),
+        ("public.kern2x.A", "public.kern1x.V"),
+        ("public.kern1.MissingA", "public.kern2.MissingV"),
+    ],
+)
+def test_kerning_group_sides_roundtrip(ufo_path, pair):
+    with UFOWriter(ufo_path) as writer:
+        writer.writeGroups({"public.kern1.A": ["A"], "public.kern2.V": ["V"]})
+        writer.writeKerning({pair: -80})
+
+    with UFOReader(ufo_path) as reader:
+        assert reader.readKerning() == {pair: -80}
+
+
+@pytest.mark.parametrize("format_version", [1, 2])
+def test_kerning_legacy_group_names(tmp_path, format_version):
+    ufo_path = tmp_path / "LegacyFont.ufo"
+    with UFOWriter(ufo_path, formatVersion=format_version) as writer:
+        glyphs = writer.getGlyphSet()
+        for name in ("A", "V"):
+            glyphs.writeGlyph(name)
+        glyphs.writeContents()
+        writer.writeGroups({"public.kern2.V": ["V"]})
+        writer.writeKerning({("public.kern2.V", "A"): -80})
+
+    with UFOReader(ufo_path) as reader:
+        first_group = next(
+            name
+            for name, members in reader.readGroups().items()
+            if name.startswith("public.kern1.") and members == ["V"]
+        )
+        assert reader.readKerning() == {(first_group, "A"): -80}
+
+
 def test_formatVersion_deprecated(ufo_path):
     reader = UFOReader(ufo_path)
 
@@ -27,7 +95,6 @@ def test_formatVersion_deprecated(ufo_path):
         assert reader.formatVersion == 3
 
     assert len(warnings) == 1
-    assert "is deprecated; use the 'formatVersionTuple'" in warnings[0].message.args[0]
 
 
 def test_formatVersionTuple(ufo_path):

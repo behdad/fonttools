@@ -1037,8 +1037,9 @@ def groupsValidator(value: Any) -> tuple[bool, Optional[str]]:
 
 def kerningValidator(data: Any) -> tuple[bool, Optional[str]]:
     """
-    Check the validity of the kerning data structure.
-    Version 3+ (though it's backwards compatible with UFO 1 and UFO 2).
+    Check the validity of UFO 3 kerning data.
+    Kerning group prefixes must match the side of each pair.
+    Legacy group names must be upconverted before validation.
 
     >>> kerning = {"A" : {"B" : 100}}
     >>> kerningValidator(kerning)
@@ -1062,12 +1063,12 @@ def kerningValidator(data: Any) -> tuple[bool, Optional[str]]:
     if not isinstance(data, Mapping):
         return False, bogusFormatMessage
     for first, secondDict in data.items():
-        if not isinstance(first, str):
+        if not isinstance(first, str) or first.startswith("public.kern2."):
             return False, bogusFormatMessage
         elif not isinstance(secondDict, Mapping):
             return False, bogusFormatMessage
         for second, value in secondDict.items():
-            if not isinstance(second, str):
+            if not isinstance(second, str) or second.startswith("public.kern1."):
                 return False, bogusFormatMessage
             elif not isinstance(value, numberTypes):
                 return False, bogusFormatMessage
