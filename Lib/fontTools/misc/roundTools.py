@@ -127,10 +127,12 @@ def nearestMultipleShortestRepr(value: float, factor: float) -> str:
     Returns:
         str: A compact string representation of the value.
     """
+    value = otRound(value / factor) * factor
+    # Check after rounding: a tiny non-zero input can round to zero, and the
+    # range of valid choices around zero spans both signs.
     if not value:
         return "0.0"
 
-    value = otRound(value / factor) * factor
     eps = 0.5 * factor
     lo = value - eps
     hi = value + eps

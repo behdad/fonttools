@@ -75,6 +75,13 @@ class FixedToolsTest(unittest.TestCase):
         self.assertEqual("-1.0", floatToFixedToStr(-1, 14))
         self.assertEqual("0.0", floatToFixedToStr(0, 14))
 
+    def test_floatToFixedToStr_rounds_to_zero(self):
+        # non-zero values whose fixed-point representation is zero
+        self.assertEqual("0.0", floatToFixedToStr(1e-5, 14))
+        self.assertEqual("0.0", floatToFixedToStr(-1e-5, 14))
+        self.assertEqual("0.0", floatToFixedToStr(1e-6, 16))
+        self.assertEqual("0.0", floatToFixedToStr(0.4 / (1 << 14), 14))
+
     def test_fixedToFloat_return_float(self):
         value = fixedToFloat(16384, 14)
         self.assertIsInstance(value, float)
