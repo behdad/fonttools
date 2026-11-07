@@ -1,3 +1,4 @@
+from copy import deepcopy
 from io import BytesIO
 
 import pytest
@@ -247,9 +248,24 @@ def test_jstf_gsub_references_preserve_split_lookup_roles():
         lookup Shared { sub A by A.alt; sub A.alt by A.done; } Shared;
         feature ccmp { lookup Shared; } ccmp;
         feature rvrn { lookup Shared; } rvrn;
-        feature kern { pos A 10; } kern;
+        lookup Position { pos A 10; } Position;
+        feature kern { pos A' lookup Position; } kern;
         """)
     mod = table("JstfGSUBModList", GSUBLookupIndex=[0])
+    maximum = table("JstfMax", Lookup=deepcopy(font["GPOS"].table.LookupList.Lookup))
+    # Extended positioning contexts also use SeqLookup records, but their
+    # indices refer to GPOS and must not follow the GSUB permutation.
+    maximum.Lookup[1].LookupType = 7
+    maximum.Lookup[1].SubTable = [
+        table(
+            "ContextPos",
+            Format=6,
+            GlyphCount=1,
+            SeqLookupCount=1,
+            Coverage=[table("Coverage", glyphs=["A"])],
+            SeqLookupRecord=[table("SeqLookup", SequenceIndex=0, LookupListIndex=0)],
+        )
+    ]
     priority = table(
         "JstfPriority",
         ShrinkageEnableGSUB=mod,
@@ -257,6 +273,7 @@ def test_jstf_gsub_references_preserve_split_lookup_roles():
         ExtensionEnableGSUB=mod,
         ExtensionDisableGSUB=mod,
         ShrinkageEnableGPOS=table("JstfGPOSModList", GPOSLookupIndex=[0]),
+        ShrinkageJstfMax=maximum,
     )
     font["JSTF"] = newTable("JSTF")
     font["JSTF"].table = table(
@@ -290,6 +307,9 @@ def test_jstf_gsub_references_preserve_split_lookup_roles():
         assert mod.GSUBLookupIndex == [0, 1]
         assert mod.LookupCount == 2
     assert priority.ShrinkageEnableGPOS.GPOSLookupIndex == [0]
+    context = priority.ShrinkageJstfMax.Lookup[1].SubTable[0]
+    assert context.Format == 6
+    assert context.SeqLookupRecord[0].LookupListIndex == 0
 
 
 def test_cli_static_output(tmp_path):

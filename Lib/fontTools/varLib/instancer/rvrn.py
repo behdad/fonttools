@@ -14,6 +14,9 @@ class _LookupRemapper(TTVisitor):
         self.seen = set()
 
     def visit(self, obj, *args, **kwargs):
+        # JSTF maximum tables contain GPOS lookups, not GSUB references.
+        if isinstance(obj, ot.JstfMax):
+            return
         # Layout tables may share subobjects. Remap each reference only once.
         if hasattr(obj, "__dict__") or isinstance(obj, (list, dict)):
             if id(obj) in self.seen:
