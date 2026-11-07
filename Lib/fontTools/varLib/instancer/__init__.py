@@ -133,6 +133,7 @@ from .featureVars import (
     _checkFeatureVariationConditions,
 )
 from .colr import instantiateCOLR
+from .rvrn import _instantiateRvrn
 from fontTools.misc.cliTools import makeOutputFileName
 from fontTools.varLib.instancer import solver
 from fontTools.ttLib.tables.otTables import VarComponentFlags
@@ -3025,6 +3026,7 @@ def instantiateVariableFont(
             origVarfont.__dict__ = varfont.__dict__.copy()
 
     if "fvar" not in varfont:
+        _instantiateRvrn(varfont)
         if overlap == OverlapMode.KEEP_AND_SET_FLAGS:
             glyfTag = "GLYF" if "GLYF" in varfont else "glyf"
             if glyfTag in varfont:
