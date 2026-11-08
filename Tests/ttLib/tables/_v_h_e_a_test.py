@@ -281,6 +281,17 @@ class VheaRecalcTest(unittest.TestCase):
         self.assertEqual(vhea.minBottomSideBearing, 0)
         self.assertEqual(vhea.yMaxExtent, 0)
 
+    def test_recalc_empty_glyf_shell(self):
+        font = TTFont()
+        font.importXML(os.path.join(DATA_DIR, "_v_h_e_a_recalc_empty.ttx"))
+        font["glyf"] = newTable("glyf")
+        vhea = font["vhea"]
+        vhea.recalc(font)
+        self.assertEqual(vhea.advanceHeightMax, 900)
+        self.assertEqual(vhea.minTopSideBearing, 0)
+        self.assertEqual(vhea.minBottomSideBearing, 0)
+        self.assertEqual(vhea.yMaxExtent, 0)
+
 
 if __name__ == "__main__":
     import sys
