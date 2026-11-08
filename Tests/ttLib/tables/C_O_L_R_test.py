@@ -103,6 +103,19 @@ class COLR_V0_Test(object):
         colr.decompile(compiled, font)
         assert getXML(colr.toXML, font) == COLR_V0_XML
 
+    def test_round_trip_xml_empty(self, font):
+        colr = table_C_O_L_R_()
+        for name, attrs, content in parseXML('<version value="0"/>'):
+            colr.fromXML(name, attrs, content, font)
+        assert colr.ColorLayers == {}
+        compiled = colr.compile(font)
+
+        colr = table_C_O_L_R_()
+        colr.decompile(compiled, font)
+        assert colr.version == 0
+        assert colr.ColorLayers == {}
+        assert getXML(colr.toXML, font) == ['<version value="0"/>']
+
 
 COLR_V1_SAMPLE = (
     (b"\x00\x01", "Version (1)"),

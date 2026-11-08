@@ -58,6 +58,10 @@ class table_S_V_G_(DefaultTable.DefaultTable):
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/stat
     """
 
+    def __init__(self, tag=None):
+        DefaultTable.DefaultTable.__init__(self, tag)
+        self.docList = []
+
     def decompile(self, data, ttFont):
         self.docList = []
         # Version 0 is the standardized version of the table; and current.

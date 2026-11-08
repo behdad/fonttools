@@ -142,6 +142,23 @@ def test_round_trip_ttx(font):
     assert getXML(table.toXML, font) == OTSVG_TTX
 
 
+def test_round_trip_ttx_empty(font):
+    font["SVG "] = table = table_S_V_G_()
+    table.decompile(struct.pack(">HLLH", 0, 10, 0, 0), font)
+    assert table.docList == []
+
+    # the empty table is dumped without any child elements
+    buf = io.StringIO()
+    font.saveXML(buf, tables=["SVG "])
+    font = TTFont()
+    font.importXML(io.StringIO(buf.getvalue()))
+
+    assert font["SVG "].docList == []
+    table = table_S_V_G_()
+    table.decompile(font["SVG "].compile(font), font)
+    assert table.docList == []
+
+
 def test_round_trip_ttx_doc_containing_cdata_end(font):
     # a document containing "]]>" must not escape the CDATA section it is
     # written into, or the dump reads back as different tables

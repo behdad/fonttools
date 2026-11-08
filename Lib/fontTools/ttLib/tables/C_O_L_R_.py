@@ -106,6 +106,8 @@ class table_C_O_L_R_(DefaultTable.DefaultTable):
     def fromXML(self, name, attrs, content, ttFont):
         if name == "version":  # old COLR v0 API
             setattr(self, name, safeEval(attrs["value"]))
+            if not hasattr(self, "ColorLayers"):
+                self.ColorLayers = {}
         elif name == "ColorGlyph":
             if not hasattr(self, "ColorLayers"):
                 self.ColorLayers = {}
