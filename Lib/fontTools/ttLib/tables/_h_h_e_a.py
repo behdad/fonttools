@@ -99,15 +99,16 @@ class table__h_h_e_a(DefaultTable.DefaultTable):
                     )
         elif self.glyphTableTag in ttFont:
             glyfTable = ttFont[self.glyphTableTag]
-            for name in ttFont.getGlyphOrder():
-                g = glyfTable[name]
-                if g.numberOfContours == 0:
-                    continue
-                if g.numberOfContours < 0 and not hasattr(g, "xMax"):
-                    # Composite glyph without extents set.
-                    # Calculate those.
-                    g.recalcBounds(glyfTable)
-                boundsWidthDict[name] = g.xMax - g.xMin
+            if glyfTable.glyphs:
+                for name in ttFont.getGlyphOrder():
+                    g = glyfTable[name]
+                    if g.numberOfContours == 0:
+                        continue
+                    if g.numberOfContours < 0 and not hasattr(g, "xMax"):
+                        # Composite glyph without extents set.
+                        # Calculate those.
+                        g.recalcBounds(glyfTable)
+                    boundsWidthDict[name] = g.xMax - g.xMin
         elif "CFF " in ttFont or "CFF2" in ttFont:
             if "CFF " in ttFont:
                 topDict = ttFont["CFF "].cff.topDictIndex[0]

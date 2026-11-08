@@ -208,6 +208,17 @@ class HheaRecalcTest(unittest.TestCase):
         self.assertEqual(hhea.minRightSideBearing, 0)
         self.assertEqual(hhea.xMaxExtent, 0)
 
+    def test_recalc_empty_glyf_shell(self):
+        font = TTFont()
+        font.importXML(os.path.join(DATA_DIR, "_h_h_e_a_recalc_empty.ttx"))
+        font["glyf"] = newTable("glyf")
+        hhea = font["hhea"]
+        hhea.recalc(font)
+        self.assertEqual(hhea.advanceWidthMax, 600)
+        self.assertEqual(hhea.minLeftSideBearing, 0)
+        self.assertEqual(hhea.minRightSideBearing, 0)
+        self.assertEqual(hhea.xMaxExtent, 0)
+
 
 if __name__ == "__main__":
     import sys
