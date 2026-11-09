@@ -24,6 +24,9 @@ Parsing
 
 .. currentmodule:: fontTools.feaLib.parser
 
+A value record cannot combine variable scalars and non-NULL device adjustments.
+Explicit ``<device NULL>`` entries may be used with variable scalars.
+
 .. automodule:: fontTools.feaLib.parser
    :members:
    :undoc-members:

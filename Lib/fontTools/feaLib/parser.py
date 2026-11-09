@@ -1828,6 +1828,14 @@ class Parser(object):
                     "Device value out of valid range (-128..127)",
                     self.cur_token_location_,
                 )
+            if allDeltas and any(
+                isinstance(value, VariableScalar)
+                for value in (xPlacement, yPlacement, xAdvance, yAdvance)
+            ):
+                raise FeatureLibError(
+                    "Cannot mix variable scalars and device tables in a value record",
+                    location,
+                )
         else:
             xPlaDevice, yPlaDevice, xAdvDevice, yAdvDevice = (None, None, None, None)
 

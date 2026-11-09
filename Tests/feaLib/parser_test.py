@@ -2209,6 +2209,34 @@ class ParserTest(unittest.TestCase):
             "<0 (wght=200:-100 wght=900:-150 wdth=150,wght=900:-120) 0 0>",
         )
 
+    def test_valuerecord_variable_scalar_with_devices(self):
+        with self.assertRaises(FeatureLibError):
+            self.parse(
+                "valueRecordDef <0 (wght=200:12 wght=900:12 "
+                "wdth=150,wght=900:12) 0 0"
+                " <device 11 -1, 12 -1> <device NULL>"
+                " <device 11 -2, 12 -2> <device NULL>> foo;"
+            )
+
+    def test_valuerecord_named_variable_scalar_with_devices(self):
+        with self.assertRaises(FeatureLibError):
+            self.parse(
+                "valueRecordDef <0 0 0 (wght=200:12 wght=900:24)> variable;"
+                "valueRecordDef <variable <device 11 0> <device NULL>"
+                " <device NULL> <device NULL>> mixed;"
+            )
+
+    def test_valuerecord_variable_scalar_with_null_devices(self):
+        doc = self.parse(
+            "valueRecordDef <0 (wght=200:12 wght=900:24) 0 0"
+            " <device NULL> <device NULL> <device NULL> <device NULL>> foo;"
+        )
+        value = doc.statements[0].value
+        self.assertEqual(
+            value.yPlacement.values,
+            {(("wght", 200),): 12, (("wght", 900),): 24},
+        )
+
     def test_valuerecord_named(self):
         doc = self.parse(
             "valueRecordDef <1 2 3 4> foo;"
