@@ -217,6 +217,15 @@ class PointToSegmentPen(BasePointToSegmentPen):
 
     NOTE: The segment pen does not support and will drop point names, identifiers
     and kwargs.
+
+    Args:
+        segmentPen: The segment pen to receive the converted contours.
+        outputImpliedClosingLine: If True, always emit an explicit ``lineTo``
+            for a closing line segment before ``closePath``. If False (the
+            default), omit the closing ``lineTo`` unless its endpoint is the
+            same as the previous point. Such duplicate points are preserved
+            even when this option is False. This option does not affect open
+            contours or closing curve segments.
     """
 
     def __init__(self, segmentPen, outputImpliedClosingLine: bool = False) -> None:
