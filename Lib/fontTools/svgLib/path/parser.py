@@ -17,18 +17,14 @@ UPPERCASE = set("MZLHVCSQTA")
 
 COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
 
-# https://www.w3.org/TR/css-syntax-3/#number-token-diagram
-#   but -6.e-5 will be tokenized as "-6" then "-5" and confuse parsing
+# https://www.w3.org/TR/SVG11/paths.html#PathDataBNF
 FLOAT_RE = re.compile(
     r"[-+]?"  # optional sign
-    r"(?:"
-    r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?"  # int/float
-    r"|"
-    r"(?:\.[0-9]+(?:[eE][-+]?[0-9]+)?)"  # float with leading dot (e.g. '.42')
-    r")"
+    r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"  # integer or decimal
+    r"(?:[eE][-+]?[0-9]+)?"  # optional exponent
 )
 BOOL_RE = re.compile("^[01]")
-SEPARATOR_RE = re.compile(f"[, \t]")
+SEPARATOR_RE = re.compile("[, \t\r\n]")
 
 
 def _tokenize_path(pathdef):

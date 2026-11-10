@@ -5,6 +5,25 @@ import pytest
 
 
 @pytest.mark.parametrize(
+    "pathdef, start, end",
+    [
+        ("M 01 02 L 003 004", (1.0, 2.0), (3.0, 4.0)),
+        ("M 000.5 000.7 L 01e2 02e1", (0.5, 0.7), (100.0, 20.0)),
+        ("M 1.e2 2.E1 L -3.e1 +4.e0", (100.0, 20.0), (-30.0, 4.0)),
+        ("M .1.2 L .3.4", (0.1, 0.2), (0.3, 0.4)),
+    ],
+)
+def test_svg_number_grammar(pathdef, start, end):
+    pen = RecordingPen()
+    parse_path(pathdef, pen)
+    assert pen.value == [
+        ("moveTo", (start,)),
+        ("lineTo", (end,)),
+        ("endPath", ()),
+    ]
+
+
+@pytest.mark.parametrize(
     "pathdef, expected",
     [
         # Examples from the SVG spec
@@ -492,6 +511,25 @@ class ArcRecordingPen(RecordingPen):
         self.value.append(
             ("arcTo", (rx, ry, rotation, arc_large, arc_sweep, end_point))
         )
+
+
+@pytest.mark.parametrize(
+    "pathdef",
+    [
+        "M0 0 A01 02 03 0 1 04 05",
+        "M0 0 A1. 2. 3.e0 0 1 4. 5.",
+        "M0 0 A1 2 3\n0\n1\n4\n5",
+        "M0 0 A1 2 3\r0\r1\r4\r5",
+    ],
+)
+def test_arc_number_grammar_and_whitespace(pathdef):
+    pen = ArcRecordingPen()
+    parse_path(pathdef, pen)
+    assert pen.value == [
+        ("moveTo", ((0.0, 0.0),)),
+        ("arcTo", (1.0, 2.0, 3.0, False, True, (4.0, 5.0))),
+        ("endPath", ()),
+    ]
 
 
 def test_arc_pen_with_arcTo():
