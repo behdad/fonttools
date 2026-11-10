@@ -3,6 +3,29 @@ from fontTools.ufoLib.filenames import userNameToFileName, handleClash1, handleC
 
 
 class TestFilenames(unittest.TestCase):
+    def test_userNameToFileName_existing_iterator(self):
+        first = "a" + "1".zfill(15) + ".glif"
+        second = "a" + "2".zfill(15) + ".glif"
+        existing = [second, first, "a.glif"]
+        expected = userNameToFileName("a", existing=existing, suffix=".glif")
+        actual = userNameToFileName("a", existing=iter(existing), suffix=".glif")
+        self.assertEqual(actual, expected)
+        self.assertNotIn(actual, existing)
+
+    def test_handleClash1_existing_iterator(self):
+        existing = ["a" + "2".zfill(15), "a" + "1".zfill(15)]
+        expected = handleClash1("a", existing=existing)
+        actual = handleClash1("a", existing=iter(existing))
+        self.assertEqual(actual, expected)
+        self.assertNotIn(actual, existing)
+
+    def test_handleClash2_existing_iterator(self):
+        existing = ["2", "1"]
+        expected = handleClash2(existing=existing)
+        actual = handleClash2(existing=iter(existing))
+        self.assertEqual(actual, expected)
+        self.assertNotIn(actual, existing)
+
     def test_userNameToFileName(self):
         self.assertEqual(userNameToFileName("a"), "a")
         self.assertEqual(userNameToFileName("A"), "A_")

@@ -182,6 +182,7 @@ def userNameToFileName(
     # the incoming name must be a string
     if not isinstance(userName, str):
         raise ValueError("The value for userName must be a string.")
+    existing = set(existing)
     # establish the prefix and suffix lengths
     prefixLength = len(prefix)
     suffixLength = len(suffix)
@@ -258,6 +259,7 @@ def handleClash1(
         ... 	'00000.AAAAA000000000000001.0000000000')
         True
     """
+    existing = set(existing)
     # if the prefix length + user name length + suffix length + 15 is at
     # or past the maximum length, silce 15 characters off of the user name
     prefixLength = len(prefix)
@@ -328,6 +330,7 @@ def handleClash2(
           ... 	'00000.2.0000000000')
           True
     """
+    existing = set(existing)
     # calculate the longest possible string
     maxLength = maxFileNameLength - len(prefix) - len(suffix)
     maxValue = int("9" * maxLength)
