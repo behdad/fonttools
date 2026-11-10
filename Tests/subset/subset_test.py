@@ -1924,6 +1924,65 @@ def test_subset_preserves_condition_varstore(
     assert value.DefaultValue + evaluator[value.VarIdx] == (1 if varIdx == 1 else -1)
 
 
+@pytest.mark.parametrize("varIdx", [1, 7, 0x10000])
+def test_subset_device_of_missing_delta_set(varIdx):
+    # A variation Device whose delta set the GDEF VarStore lacks contributes
+    # zero; subsetting must not fail on it, but map it to NO_VARIATION_INDEX
+    # like a ConditionTable.
+    from fontTools.varLib.builder import (
+        buildVarData,
+        buildVarDevTable,
+        buildVarRegionList,
+        buildVarStore,
+    )
+    from fontTools.varLib.varStore import VarStoreInstancer
+
+    fb = FontBuilder(unitsPerEm=100)
+    fb.setupGlyphOrder([".notdef", "f"])
+    fb.setupCharacterMap({ord("f"): "f"})
+    fb.setupNameTable({"familyName": "TestDevice", "styleName": "Regular"})
+    fb.setupPost()
+    fb.setupFvar(axes=[("wght", 100, 400, 900, "Weight")], instances=[])
+    fb.addOpenTypeFeatures("feature kern { pos f 10; } kern;")
+    buf = io.BytesIO()
+    fb.save(buf)
+    buf.seek(0)
+    font = TTFont(buf)
+
+    subtable = font["GPOS"].table.LookupList.Lookup[0].SubTable[0]
+    subtable.ValueFormat |= 0x0040  # XAdvDevice
+    subtable.Value.XAdvDevice = buildVarDevTable(varIdx)
+    gdef = ot.GDEF()
+    gdef.Version = 0x00010003
+    gdef.GlyphClassDef = gdef.AttachList = gdef.LigCaretList = None
+    gdef.MarkAttachClassDef = gdef.MarkGlyphSetsDef = None
+    gdef.VarStore = buildVarStore(
+        buildVarRegionList([{"wght": (0, 1, 1)}], ["wght"]),
+        [buildVarData([0], [[99], [2]], optimize=False)],
+    )
+    font["GDEF"] = newTable("GDEF")
+    font["GDEF"].table = gdef
+
+    subsetter = subset.Subsetter()
+    subsetter.populate(unicodes=[ord("f")])
+    subsetter.subset(font)
+
+    output = io.BytesIO()
+    font.save(output)
+    output.seek(0)
+    roundtripped = TTFont(output)
+    value = roundtripped["GPOS"].table.LookupList.Lookup[0].SubTable[0].Value
+    device = value.XAdvDevice
+    newVarIdx = (device.StartSize << 16) + device.EndSize
+    assert newVarIdx == (0 if varIdx == 1 else ot.NO_VARIATION_INDEX)
+    evaluator = VarStoreInstancer(
+        roundtripped["GDEF"].table.VarStore if "GDEF" in roundtripped else None,
+        roundtripped["fvar"].axes,
+        {"wght": 1},
+    )
+    assert evaluator[newVarIdx] == (2 if varIdx == 1 else 0)
+
+
 def test_subset_lookup_variations_prevents_feature_dedup(featureVarsTestFont):
     font = featureVarsTestFont
     addLookupVariation(font)
