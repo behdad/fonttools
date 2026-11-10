@@ -60,7 +60,7 @@ class Error(Exception):
 
 
 def pack(fmt, obj):
-    formatstring, names, fixes = getformat(fmt, keep_pad_byte=True)
+    formatstring, names, fixes = getformat(fmt)
     elements = []
     if not isinstance(obj, dict):
         obj = obj.__dict__
@@ -142,8 +142,9 @@ _formatcache = {}
 
 def getformat(fmt, keep_pad_byte=False):
     fmt = tostr(fmt, encoding="ascii")
+    cache_key = (fmt, keep_pad_byte)
     try:
-        formatstring, names, fixes = _formatcache[fmt]
+        formatstring, names, fixes = _formatcache[cache_key]
     except KeyError:
         lines = re.split("[\n;]", fmt)
         formatstring = ""
@@ -177,7 +178,7 @@ def getformat(fmt, keep_pad_byte=False):
                     assert m.group(5) == "F"
                     fixes[name] = after
             formatstring += formatchar
-        _formatcache[fmt] = formatstring, names, fixes
+        _formatcache[cache_key] = formatstring, names, fixes
     return formatstring, names, fixes
 
 
