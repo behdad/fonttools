@@ -5,6 +5,8 @@ colorLib.table_builder: Generic helper for filling in BaseTable derivatives from
 
 import collections
 import enum
+import pickle
+from hashlib import sha256
 from fontTools.ttLib.tables.otBase import (
     BaseTable,
     FormatSwitchingBaseTable,
@@ -80,10 +82,15 @@ class TableBuilder:
     based on otData info for the target class. See BuildCallbacks.
     """
 
-    def __init__(self, callbackTable=None):
+    def __init__(self, callbackTable=None, cacheMaxSize=128):
         if callbackTable is None:
             callbackTable = {}
         self._callbackTable = callbackTable
+        # a LRU cache of (cls, sha256(pickle.dumps(source)).digest()) => dest.
+        self.cache = collections.OrderedDict() if cacheMaxSize > 0 else None
+        # cacheMaxSize of 0 means no cache; None means no limit.
+        # Not sure what a good default cache size is, 128 is just a random number...
+        self.cacheMaxSize = cacheMaxSize
 
     def _convert(self, dest, field, converter, value):
         enumClass = getattr(converter, "enumClass", None)
@@ -123,6 +130,14 @@ class TableBuilder:
 
         if isinstance(source, cls):
             return source
+
+        if self.cache is not None:
+            cacheKey = (cls, sha256(pickle.dumps(source)).digest())
+            if cacheKey in self.cache:
+                # Move to the end to mark it as most recently used
+                self.cache.move_to_end(cacheKey)
+                # return unique copies; pickle/unpickle is faster than copy.deepcopy
+                return pickle.loads(pickle.dumps(self.cache[cacheKey]))
 
         callbackKey = (cls,)
         fmt = None
@@ -177,6 +192,12 @@ class TableBuilder:
         dest = self._callbackTable.get(
             (BuildCallback.AFTER_BUILD,) + callbackKey, lambda d: d
         )(dest)
+
+        if self.cache is not None:
+            if self.cacheMaxSize is not None and len(self.cache) >= self.cacheMaxSize:
+                # Evict the least recently used item at the front of the cache
+                self.cache.popitem(last=False)
+            self.cache[cacheKey] = dest
 
         return dest
 
