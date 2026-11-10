@@ -1,6 +1,7 @@
 from fontTools.misc.loggingTools import CapturingLogHandler
 from fontTools.misc.testTools import FakeFont, makeXMLWriter
 from fontTools.misc.textTools import deHexStr
+from fontTools.ttLib.tables import otTables  # Initialize classes before converters.
 import fontTools.ttLib.tables.otConverters as otConverters
 from fontTools.ttLib import TTFont, TTLibError, newTable
 from fontTools.ttLib.tables.otBase import OTTableReader, OTTableWriter
@@ -480,6 +481,43 @@ class LazyListTest(unittest.TestCase):
             0 + LazyList()
         with self.assertRaises(TypeError):
             tuple() + LazyList()
+
+
+def _read_lazy_tag_array():
+    font = TTFont(lazy=True)
+    converter = otConverters.Tag("Tag", 0, None, None)
+    expected = [f"t{i:03d}" for i in range(9)]
+    writer = OTTableWriter()
+    writer.writeTag("head")
+    converter.writeArray(writer, font, {}, expected)
+    reader = OTTableReader(writer.getData())
+    assert reader.readTag() == "head"
+    return converter.readArray(reader, font, {}, len(expected)), expected
+
+
+class _Index:
+    def __init__(self, value):
+        self.value = value
+
+    def __index__(self):
+        return self.value
+
+
+@pytest.mark.parametrize(
+    "index, position", [(-1, 8), (-2, 7), (-9, 0), (_Index(-1), 8), (_Index(3), 3)]
+)
+def test_lazy_tag_array_index(index, position):
+    values, expected = _read_lazy_tag_array()
+    assert isinstance(values, LazyList)
+    assert values[index] == expected[position]
+    assert values[position] == expected[position]
+
+
+@pytest.mark.parametrize("index", [-10, 9])
+def test_lazy_tag_array_index_out_of_range(index):
+    values, _ = _read_lazy_tag_array()
+    with pytest.raises(IndexError):
+        values[index]
 
 
 def _readCFF2Index(data, lazy):

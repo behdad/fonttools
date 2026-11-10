@@ -1,4 +1,5 @@
 from collections import UserDict, UserList
+import operator
 
 __all__ = ["LazyDict", "LazyList"]
 
@@ -21,8 +22,11 @@ class LazyList(UserList):
         if isinstance(k, slice):
             indices = range(*k.indices(len(self)))
             return [self[i] for i in indices]
+        k = operator.index(k)
         v = self.data[k]
         if callable(v):
+            if k < 0:
+                k += len(self)
             v = v(k)
             self.data[k] = v
         return v
