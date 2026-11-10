@@ -100,16 +100,16 @@
         <Flags value="0"/>
         <ValueNameID value="275"/>  <!-- Caption -->
         <AxisValueRecord index="0">
-          <AxisIndex value="0"/>
+          <AxisIndex value="0"/>  <!-- Optical Size -->
           <Value value="8.0"/>
         </AxisValueRecord>
         <AxisValueRecord index="1">
-          <AxisIndex value="1"/>
+          <AxisIndex value="1"/>  <!-- Width -->
           <Value value="400.0"/>
         </AxisValueRecord>
       </AxisValue>
       <AxisValue index="1" Format="2">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Optical Size -->
         <Flags value="3"/>  <!-- OlderSiblingFontAttribute ElidableAxisValueName -->
         <ValueNameID value="258"/>  <!-- Text -->
         <NominalValue value="11.0"/>
@@ -117,7 +117,7 @@
         <RangeMaxValue value="12.0"/>
       </AxisValue>
       <AxisValue index="2" Format="2">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Optical Size -->
         <Flags value="0"/>
         <ValueNameID value="259"/>  <!-- Subhead -->
         <NominalValue value="16.7"/>
@@ -125,7 +125,7 @@
         <RangeMaxValue value="24.0"/>
       </AxisValue>
       <AxisValue index="3" Format="2">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Optical Size -->
         <Flags value="0"/>
         <ValueNameID value="260"/>  <!-- Display -->
         <NominalValue value="72.0"/>
@@ -133,7 +133,7 @@
         <RangeMaxValue value="72.0"/>
       </AxisValue>
       <AxisValue index="4" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="0"/>
         <ValueNameID value="262"/>  <!-- Condensed -->
         <NominalValue value="80.0"/>
@@ -141,7 +141,7 @@
         <RangeMaxValue value="89.0"/>
       </AxisValue>
       <AxisValue index="5" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="0"/>
         <ValueNameID value="263"/>  <!-- Semicondensed -->
         <NominalValue value="90.0"/>
@@ -149,7 +149,7 @@
         <RangeMaxValue value="96.0"/>
       </AxisValue>
       <AxisValue index="6" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="264"/>  <!-- Normal -->
         <NominalValue value="100.0"/>
@@ -157,7 +157,7 @@
         <RangeMaxValue value="101.0"/>
       </AxisValue>
       <AxisValue index="7" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="0"/>
         <ValueNameID value="265"/>  <!-- Extended -->
         <NominalValue value="125.0"/>
@@ -165,7 +165,7 @@
         <RangeMaxValue value="125.0"/>
       </AxisValue>
       <AxisValue index="8" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="267"/>  <!-- Light -->
         <NominalValue value="300.0"/>
@@ -173,7 +173,7 @@
         <RangeMaxValue value="349.0"/>
       </AxisValue>
       <AxisValue index="9" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="268"/>  <!-- Regular -->
         <NominalValue value="400.0"/>
@@ -181,7 +181,7 @@
         <RangeMaxValue value="449.0"/>
       </AxisValue>
       <AxisValue index="10" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="269"/>  <!-- Medium -->
         <NominalValue value="500.0"/>
@@ -189,7 +189,7 @@
         <RangeMaxValue value="549.0"/>
       </AxisValue>
       <AxisValue index="11" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="270"/>  <!-- Semibold -->
         <NominalValue value="600.0"/>
@@ -197,7 +197,7 @@
         <RangeMaxValue value="649.0"/>
       </AxisValue>
       <AxisValue index="12" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="271"/>  <!-- Bold -->
         <NominalValue value="700.0"/>
@@ -205,7 +205,7 @@
         <RangeMaxValue value="749.0"/>
       </AxisValue>
       <AxisValue index="13" Format="2">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="272"/>  <!-- Black -->
         <NominalValue value="900.0"/>
@@ -213,7 +213,7 @@
         <RangeMaxValue value="900.0"/>
       </AxisValue>
       <AxisValue index="14" Format="1">
-        <AxisIndex value="3"/>
+        <AxisIndex value="3"/>  <!-- Italic -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="274"/>  <!-- Roman -->
         <Value value="0.0"/>

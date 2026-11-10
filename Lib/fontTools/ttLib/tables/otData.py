@@ -3991,7 +3991,7 @@ otData = [
         [
             FieldSpec("uint16", "Format", description="Format, = 1"),
             FieldSpec(
-                "uint16",
+                "STATAxisIndex",
                 "AxisIndex",
                 description="Index into the axis record array identifying the axis of design variation to which the axis value record applies.",
             ),
@@ -4005,7 +4005,7 @@ otData = [
         [
             FieldSpec("uint16", "Format", description="Format, = 2"),
             FieldSpec(
-                "uint16",
+                "STATAxisIndex",
                 "AxisIndex",
                 description="Index into the axis record array identifying the axis of design variation to which the axis value record applies.",
             ),
@@ -4021,7 +4021,7 @@ otData = [
         [
             FieldSpec("uint16", "Format", description="Format, = 3"),
             FieldSpec(
-                "uint16",
+                "STATAxisIndex",
                 "AxisIndex",
                 description="Index into the axis record array identifying the axis of design variation to which the axis value record applies.",
             ),
@@ -4055,7 +4055,7 @@ otData = [
         "AxisValueRecord",
         [
             FieldSpec(
-                "uint16",
+                "STATAxisIndex",
                 "AxisIndex",
                 description="Index into the axis record array identifying the axis of design variation to which the axis value record applies.",
             ),

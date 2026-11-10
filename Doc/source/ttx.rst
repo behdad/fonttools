@@ -57,6 +57,11 @@ It is possible that different glyphs use the same name. If this happens, we forc
 
 Because the order in which glyphs are stored inside the binary font is important, we maintain an ordered list of glyph names in the font.
 
+In ``STAT`` XML, ``AxisIndex`` values include axis-name comments when the
+corresponding ``name`` records are available. These indices refer to ``STAT``'s
+design-axis records, not to ``fvar``'s axis order. The comments do not change the
+binary data.
+
 .. automodule:: fontTools.ttx
    :members:
    :undoc-members:

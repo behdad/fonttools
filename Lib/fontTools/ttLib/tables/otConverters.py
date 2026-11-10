@@ -495,6 +495,22 @@ class NameID(UShort):
         xmlWriter.newline()
 
 
+class STATAxisIndex(UShort):
+    def xmlWrite(self, xmlWriter, font, value, name, attrs):
+        xmlWriter.simpletag(name, attrs + [("value", value)])
+        if font:
+            statTable = font.get("STAT")
+            nameTable = font.get("name")
+            if statTable and nameTable:
+                axes = statTable.table.DesignAxisRecord
+                if axes is not None and 0 <= value < len(axes.Axis):
+                    axisName = nameTable.getDebugName(axes.Axis[value].AxisNameID)
+                    if axisName:
+                        xmlWriter.write("  ")
+                        xmlWriter.comment(axisName)
+        xmlWriter.newline()
+
+
 class STATFlags(UShort):
     def xmlWrite(self, xmlWriter, font, value, name, attrs):
         xmlWriter.simpletag(name, attrs + [("value", value)])
@@ -3088,6 +3104,7 @@ converterMapping = {
     "ExtendMode": ExtendMode,
     "CompositeMode": CompositeMode,
     "STATFlags": STATFlags,
+    "STATAxisIndex": STATAxisIndex,
     "TupleList": partial(CFF2Index, itemConverterClass=TupleValues),
     "TupleListOffset": partial(TupleListOffset, itemConverterClass=TupleValues),
     "VarCompositeGlyphList": partial(CFF2Index, itemClass=VarCompositeGlyph),

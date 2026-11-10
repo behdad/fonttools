@@ -524,13 +524,13 @@
     <!-- AxisValueCount=2 -->
     <AxisValueArray>
       <AxisValue index="0" Format="1">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Weight -->
         <Flags value="0"/>
         <ValueNameID value="258"/>  <!-- Thin -->
         <Value value="100.0"/>
       </AxisValue>
       <AxisValue index="1" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="0"/>
         <ValueNameID value="288"/>  <!-- ExtraCondensed -->
         <NominalValue value="62.5"/>

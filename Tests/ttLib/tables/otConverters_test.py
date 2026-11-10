@@ -1,3 +1,5 @@
+from fontTools.fontBuilder import addFvar
+from fontTools.otlLib.builder import buildStatTable
 from fontTools.misc.loggingTools import CapturingLogHandler
 from fontTools.misc.testTools import FakeFont, makeXMLWriter
 from fontTools.misc.textTools import deHexStr
@@ -6,6 +8,8 @@ from fontTools.ttLib import TTFont, TTLibError, newTable
 from fontTools.ttLib.tables.otBase import OTTableReader, OTTableWriter
 import pytest
 import unittest
+import io
+from xml.etree import ElementTree
 
 
 class Char64Test(unittest.TestCase):
@@ -165,6 +169,70 @@ class NameIDTest(unittest.TestCase):
         )
         xml = writer.file.getvalue().decode("utf-8").rstrip()
         self.assertEqual(xml, '<FooNameID attr="val" value="0"/>')
+
+
+def test_stat_axis_index_comments_use_stat_order():
+    font = TTFont()
+    font["name"] = newTable("name")
+    font["name"].names = []
+    addFvar(
+        font,
+        [
+            ("wght", 100, 400, 900, "Weight"),
+            ("GRAD", -1, 0, 1, "Grade"),
+            ("ROND", 0, 0, 100, "Roundness"),
+        ],
+        [],
+    )
+    buildStatTable(
+        font,
+        [
+            dict(tag="ROND", name="Roundness", values=[dict(value=0, name="Default")]),
+            dict(
+                tag="GRAD",
+                name="Grade",
+                values=[
+                    dict(
+                        nominalValue=0, rangeMinValue=-1, rangeMaxValue=1, name="Normal"
+                    )
+                ],
+            ),
+            dict(
+                tag="wght",
+                name="Weight",
+                values=[dict(value=400, linkedValue=700, name="Regular")],
+            ),
+        ],
+        locations=[dict(name="Combination", location={"ROND": 0, "wght": 400})],
+        elidedFallbackName="Regular",
+    )
+    before = {tag: font[tag].compile(font) for tag in ("STAT", "fvar", "name")}
+    xml = io.StringIO()
+    font.saveXML(xml, tables=list(before))
+    root = ElementTree.fromstring(
+        xml.getvalue(),
+        parser=ElementTree.XMLParser(
+            target=ElementTree.TreeBuilder(insert_comments=True)
+        ),
+    )
+    named_axes = []
+    for record in root.iter():
+        children = list(record)
+        for axis, comment in zip(children, children[1:]):
+            if axis.tag == "AxisIndex" and comment.tag is ElementTree.Comment:
+                named_axes.append((int(axis.attrib["value"]), comment.text.strip()))
+    assert named_axes == [
+        (0, "Roundness"),
+        (2, "Weight"),
+        (0, "Roundness"),
+        (1, "Grade"),
+        (2, "Weight"),
+    ]
+
+    reloaded = TTFont()
+    reloaded.importXML(io.StringIO(xml.getvalue()))
+    for tag, data in before.items():
+        assert reloaded[tag].compile(reloaded) == data
 
 
 class UInt8Test(unittest.TestCase):
