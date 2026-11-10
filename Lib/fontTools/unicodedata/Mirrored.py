@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# NOTE: The mappings in this file were generated from the command line:
-# cat BidiMirroring.txt | grep "^[0-9A-F]" | sed "s/;//" | awk '{print "    0x"$1": 0x"$2","}'
-#
-# Source: http://www.unicode.org/Public/UNIDATA/BidiMirroring.txt
+# NOTE: This file was auto-generated with MetaTools/buildUCD.py.
+# Source: https://unicode.org/Public/UNIDATA/BidiMirroring.txt
 # License: http://unicode.org/copyright.html#License
 #
 # BidiMirroring-18.0.0.txt
@@ -14,6 +12,71 @@
 #
 # Unicode Character Database
 # For documentation, see https://www.unicode.org/reports/tr44/
+#
+# Bidi_Mirroring_Glyph Property
+#
+# This file is an informative contributory data file in the
+# Unicode Character Database.
+#
+# This data file lists characters that have the Bidi_Mirrored=Yes property
+# value, for which there is another Unicode character that typically has a glyph
+# that is the mirror image of the original character's glyph.
+#
+# The file contains a list of lines with mappings from one code point
+# to another one for character-based mirroring.
+# Note that for "real" mirroring, a rendering engine needs to select
+# appropriate alternative glyphs, and that many Unicode characters do not
+# have a mirror-image Unicode character.
+#
+# Each mapping line contains two fields, separated by a semicolon (';').
+# Each of the two fields contains a code point represented as a
+# variable-length hexadecimal value with 4 to 6 digits.
+# A comment indicates where the characters are "BEST FIT" mirroring.
+#
+# Code points for which Bidi_Mirrored=Yes, but for which no appropriate
+# characters exist with mirrored glyphs, are
+# listed as comments at the end of the file.
+#
+# Formally, the default value of the Bidi_Mirroring_Glyph property
+# for each code point is <none>, unless a mapping to
+# some other character is specified in this data file. When a code
+# point has the default value for the Bidi_Mirroring_Glyph property,
+# that means that no other character exists whose glyph is suitable
+# for character-based mirroring.
+#
+# For information on bidi mirroring, see UAX #9: Unicode Bidirectional Algorithm,
+# at https://www.unicode.org/reports/tr9/
+#
+# This file was originally created by Markus Scherer.
+# Extended for Unicode 3.2, 4.0, 4.1, 5.0, 5.1, 5.2, and 6.0 by Ken Whistler,
+# and for subsequent versions by Ken Whistler, Laurentiu Iancu, Roozbeh Pournader,
+# and Robin Leroy.
+#
+# Historical and Compatibility Information:
+#
+# The OpenType Mirroring Pairs List (OMPL) is frozen to match the
+# Unicode 5.1 version of the Bidi_Mirroring_Glyph property (2008).
+# See https://www.microsoft.com/typography/otspec/ompl.txt
+#
+# The Unicode 6.1 version of the Bidi_Mirroring_Glyph property (2011)
+# added one mirroring pair: 27CB <--> 27CD.
+#
+# The Unicode 11.0 version of the Bidi_Mirroring_Glyph property (2018)
+# underwent a substantial revision, to formally recognize all of the
+# exact mirroring pairs and "BEST FIT" mirroring pairs that had been
+# added after the freezing of the OMPL list. As a result, starting
+# with Unicode 11.0, the bmg mapping values more accurately reflect
+# the current status of glyphs for Bidi_Mirrored characters in
+# the Unicode Standard, but this listing now extends significantly
+# beyond the frozen OMPL list. Implementers should be aware of this
+# intentional distinction.
+#
+# ############################################################
+#
+# Property:	Bidi_Mirroring_Glyph
+#
+# @missing: 0000..10FFFF; <none>
+
 MIRRORED = {
     0x0028: 0x0029,
     0x0029: 0x0028,
@@ -446,11 +509,11 @@ MIRRORED = {
     0xFF60: 0xFF5F,
     0xFF62: 0xFF63,
     0xFF63: 0xFF62,
+    0x1DB10: 0x221D,
     0x1DB03: 0x1DB04,
     0x1DB04: 0x1DB03,
     0x1DB05: 0x1DB06,
     0x1DB06: 0x1DB05,
     0x1DB08: 0x1DB09,
     0x1DB09: 0x1DB08,
-    0x1DB10: 0x221D,
 }
