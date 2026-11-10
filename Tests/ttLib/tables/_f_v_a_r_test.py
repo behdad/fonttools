@@ -1,7 +1,7 @@
 from fontTools.misc.testTools import parseXML
 from fontTools.misc.textTools import deHexStr
 from fontTools.misc.xmlWriter import XMLWriter
-from fontTools.ttLib import TTLibError
+from fontTools.ttLib import TTLibError, TTFont
 from fontTools.ttLib.tables._f_v_a_r import table__f_v_a_r, Axis, NamedInstance
 from fontTools.ttLib.tables._n_a_m_e import table__n_a_m_e, NameRecord
 from io import BytesIO
@@ -61,6 +61,19 @@ def MakeFont():
 
 
 class FontVariationTableTest(unittest.TestCase):
+    def test_name_with_hyphens_XML_roundtrip(self):
+        font = TTFont()
+        for tag, table in MakeFont().items():
+            font[tag] = table
+        name_id = font["fvar"].axes[0].axisNameID
+        font["name"].setName("Weight---Light", name_id, 1, 0, 0)
+        output = BytesIO()
+        font.saveXML(output, tables=["name", "fvar"])
+        restored = TTFont()
+        restored.importXML(BytesIO(output.getvalue()))
+        self.assertEqual("Weight---Light", restored["name"].getDebugName(name_id))
+        self.assertEqual(name_id, restored["fvar"].axes[0].axisNameID)
+
     def test_compile(self):
         font = MakeFont()
         h = font["fvar"].compile(font)

@@ -1,6 +1,7 @@
 from io import BytesIO
 import os
 import unittest
+from xml.etree import ElementTree
 from fontTools.misc.textTools import bytesjoin, tobytes
 from fontTools.misc.xmlWriter import XMLWriter
 
@@ -8,6 +9,17 @@ HEADER = b'<?xml version="1.0" encoding="UTF-8"?>\n'
 
 
 class TestXMLWriter(unittest.TestCase):
+    def test_comment_hyphen_runs(self):
+        for text in ("Weight--Light", "three---hyphens", "four----hyphens", "-->tail"):
+            with self.subTest(text=text):
+                writer = XMLWriter(BytesIO())
+                writer.begintag("root")
+                writer.comment(text)
+                writer.endtag("root")
+                self.assertEqual(
+                    "root", ElementTree.fromstring(writer.file.getvalue()).tag
+                )
+
     def test_comment_escaped(self):
         writer = XMLWriter(BytesIO())
         writer.comment("This&that are <comments>")

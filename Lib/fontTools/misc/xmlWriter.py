@@ -9,6 +9,7 @@ import os
 import string
 import logging
 import itertools
+import re
 
 INDENT = "  "
 TTX_LOG = logging.getLogger("fontTools.ttx")
@@ -129,6 +130,8 @@ class XMLWriter(object):
 
     def comment(self, data):
         data = escape(data)
+        # XML comments cannot contain adjacent hyphens, including longer runs.
+        data = re.sub(r"-(?=-)", "- ", data)
         lines = data.split("\n")
         self._writeraw("<!-- " + lines[0])
         for line in lines[1:]:
