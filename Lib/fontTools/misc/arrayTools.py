@@ -353,7 +353,10 @@ def pairwise(iterable, reverse=False):
         it = reversed(iterable)
     else:
         it = iter(iterable)
-    first = next(it, None)
+    try:
+        first = next(it)
+    except StopIteration:
+        return
     a = first
     for b in it:
         yield (a, b)

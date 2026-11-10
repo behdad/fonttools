@@ -14,8 +14,10 @@ from fontTools.misc.arrayTools import (
     unionRect,
     rectCenter,
     intRect,
+    pairwise,
 )
 import math
+import pytest
 
 
 def test_calcBounds():
@@ -100,3 +102,22 @@ def test_rectCenter():
 
 def test_intRect():
     assert intRect((0.9, 2.9, 3.1, 4.1)) == (0, 2, 4, 5)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [list, tuple, iter, lambda items: (item for item in items)],
+    ids=["list", "tuple", "iterator", "generator"],
+)
+@pytest.mark.parametrize(
+    "items, expected",
+    [
+        ([], []),
+        ([None], [(None, None)]),
+        ([None, 1], [(None, 1), (1, None)]),
+        ([0], [(0, 0)]),
+        ([0, 1, 2], [(0, 1), (1, 2), (2, 0)]),
+    ],
+)
+def test_pairwise_iterables(factory, items, expected):
+    assert list(pairwise(factory(items))) == expected
