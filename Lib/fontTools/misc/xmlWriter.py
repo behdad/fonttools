@@ -218,6 +218,8 @@ def escape(data):
 def escapeattr(data):
     data = escape(data)
     data = data.replace('"', "&quot;")
+    data = data.replace("\t", "&#9;")
+    data = data.replace("\n", "&#10;")
     return data
 
 

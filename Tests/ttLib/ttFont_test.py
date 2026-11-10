@@ -454,6 +454,22 @@ def test_saveXML_specific_tables():
     assert "<hhea>" not in xml
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="Windows filenames cannot contain tabs or newlines"
+)
+@pytest.mark.parametrize("whitespace", ["\t", "\n"])
+def test_split_xml_whitespace_filename_roundtrip(tmp_path, whitespace):
+    font = TTFont()
+    font["name"] = newTable("name")
+    font["name"].setName("Example", 1, 3, 1, 0x409)
+    path = tmp_path / f"name{whitespace}file.ttx"
+    font.saveXML(path, tables=["name"], splitTables=True)
+
+    restored = TTFont()
+    restored.importXML(path)
+    assert restored["name"].getDebugName(1) == "Example"
+
+
 def test_saveXML_skipTables():
     """skipTables should exclude specified tables when tables is None."""
     font = TTFont()
