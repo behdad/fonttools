@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Tools to parse data files from the Unicode Character Database.
+
+Running this script regenerates blocks, scripts, script extensions and bidi
+mirroring data. Use --ucd-path to read a local UCD directory instead of downloading.
 """
 
 from urllib.request import urlopen
@@ -230,6 +233,39 @@ def build_ranges(
     log.info("saved new file: '%s'", os.path.normpath(output_path))
 
 
+def build_mirrored(local_ucd=None, output_path=None):
+    """Build the MIRRORED mapping from the Unicode BidiMirroring.txt data."""
+    filename = "BidiMirroring.txt"
+    if not output_path:
+        output_path = UNIDATA_PATH + "Mirrored.py"
+
+    if local_ucd:
+        log.info("loading '%s' from local directory '%s'", filename, local_ucd)
+    else:
+        log.info("downloading '%s' from '%s'", filename, UNIDATA_URL)
+
+    file_lines = read_unidata_file(filename, local_ucd)
+    header = parse_unidata_header(file_lines)
+    data = parse_semicolon_separated_data(file_lines)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(SRC_ENCODING)
+        f.write("#\n")
+        f.write(NOTICE)
+        f.write("# Source: {}{}\n".format(UNIDATA_URL, filename))
+        f.write("# License: {}\n".format(UNIDATA_LICENSE_URL))
+        f.write("#\n")
+        f.write(header + "\n")
+        f.write("MIRRORED = {\n")
+        for code, mirrored in data:
+            f.write(
+                "    0x{:04X}: 0x{:04X},\n".format(int(code, 16), int(mirrored, 16))
+            )
+        f.write("}\n")
+
+    log.info("saved new file: '%s'", os.path.normpath(output_path))
+
+
 _normalize_re = re.compile(r"[-_ ]+")
 
 
@@ -286,6 +322,7 @@ def main():
         aliases=script_aliases,
     )
     build_ranges("ScriptExtensions.txt", local_ucd=options.ucd_path, is_set=True)
+    build_mirrored(local_ucd=options.ucd_path)
 
 
 if __name__ == "__main__":
