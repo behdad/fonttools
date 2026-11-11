@@ -84,6 +84,15 @@ class MergeIntegrationTest(unittest.TestCase):
         mergedfont = ttLib.TTFont(mergedpath)
         self.expect_ttx(mergedfont, self.getpath("CFFFont_expected.ttx"))
 
+    def test_merge_cff_objects(self):
+        fonts = []
+        for name in ("CFFFont1.ttx", "CFFFont2.ttx"):
+            font = ttLib.TTFont(recalcBBoxes=False, recalcTimestamp=False)
+            font.importXML(self.getpath(name))
+            fonts.append(font)
+        merged = _merge_and_recompile(fonts)
+        self.expect_ttx(merged, self.getpath("CFFFont_expected.ttx"))
+
 
 class gaspMergeUnitTest(unittest.TestCase):
     def setUp(self):
@@ -389,6 +398,32 @@ def _merge_and_recompile(fontfiles, options=None):
     merged = merger.merge(fontfiles)
     buf = _compile(merged)
     return ttLib.TTFont(buf)
+
+
+@pytest.mark.parametrize("first_in_memory", [False, True])
+def test_merge_ttfont_inputs(first_in_memory, tmp_path):
+    first = ttLib.TTFont(_make_fontfile_with_glyphs(0xE000, 2))
+    second = ttLib.TTFont(_make_fontfile_with_glyphs(0xE000, 2))
+    first.ensureDecompiled()
+    FontBuilder(font=first).setupPost()
+    second.ensureDecompiled()
+    FontBuilder(font=second).setupPost()
+    glyph_name = second.getBestCmap()[0xE000]
+    for subtable in second["cmap"].tables:
+        if subtable.isUnicode():
+            subtable.cmap = {0xE001: glyph_name}
+    second["hmtx"].metrics[glyph_name] = (777, 11)
+
+    if not first_in_memory:
+        first_path = tmp_path / "first.ttf"
+        first.save(first_path)
+        first = first_path
+    merged = _merge_and_recompile([first, second])
+    cmap = merged.getBestCmap()
+    assert set(cmap) == {0xE000, 0xE001}
+    assert cmap[0xE000] != cmap[0xE001]
+    assert merged["hmtx"].metrics[cmap[0xE000]] == (500, 0)
+    assert merged["hmtx"].metrics[cmap[0xE001]] == (777, 11)
 
 
 @pytest.mark.parametrize("first_format", [14, 15])

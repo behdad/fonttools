@@ -226,6 +226,10 @@ def _convertCFFToCFF2(cff, otFont):
 
 def convertCFFToCFF2(font):
     cff = font["CFF "].cff
+    # The CFF2 table takes its charset from the font's glyph order when it is
+    # compiled. Load the glyph order now, from the CFF charset: once the CFF
+    # table is gone, it would be derived from the post or cmap table instead.
+    font.getGlyphOrder()
     del font["CFF "]
     _convertCFFToCFF2(cff, font)
     table = font["CFF2"] = newTable("CFF2")

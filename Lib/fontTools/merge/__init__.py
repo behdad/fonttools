@@ -32,6 +32,7 @@ from fontTools.ttLib.beyond64k import upper_tables, _compact_layout_tables
 import fontTools.merge.tables
 from fontTools.misc.loggingTools import Timer
 from functools import reduce
+from io import BytesIO
 import sys
 import logging
 
@@ -66,7 +67,7 @@ def _fontHasUpperTables(font):
 class Merger(object):
     """Font merger.
 
-    This class merges multiple files into a single OpenType font, taking into
+    This class merges multiple fonts into a single OpenType font, taking into
     account complexities such as OpenType layout (``GSUB``/``GPOS``) tables and
     cross-font metrics (for example ``hhea.ascent`` is set to the maximum value
     across all the fonts).
@@ -108,14 +109,25 @@ class Merger(object):
         """Merges fonts together.
 
         Args:
-                fontfiles: A list of file names to be merged
+                fontfiles: A list of file names or :class:`fontTools.ttLib.TTFont`
+                    objects to be merged. The two input types can be mixed.
 
         Returns:
                 A :class:`fontTools.ttLib.TTFont` object. Call the ``save`` method on
                 this to write it out to an OTF file.
 
+        Font objects are serialized in memory, including any unsaved changes.
+        No temporary font files are created, and the input objects are not closed.
+
         DMAP overrides are folded into the merged cmap table.
         """
+        fontfiles = list(fontfiles)
+        for index, font in enumerate(fontfiles):
+            if isinstance(font, ttLib.TTFont):
+                stream = BytesIO()
+                font.save(stream)
+                fontfiles[index] = stream
+
         #
         # Settle on a mega glyph order.
         #
