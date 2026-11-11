@@ -286,6 +286,47 @@ class CffLibTest(DataFilesHandler):
 
 
 class CFFToCFF2Test(DataFilesHandler):
+    def test_conversion_without_glyph_names_in_post(self):
+        # With a format 3 post table, the glyph names are only in the CFF
+        # charset. A freshly loaded font has not read its glyph order yet.
+        from fontTools.cffLib.CFFToCFF2 import convertCFFToCFF2
+        from fontTools.fontBuilder import FontBuilder
+        from fontTools.pens.t2CharStringPen import T2CharStringPen
+
+        glyphOrder = [".notdef", "A", "A.alt"]
+        fb = FontBuilder(1000, isTTF=False)
+        fb.setupGlyphOrder(glyphOrder)
+        fb.setupCharacterMap({0x41: "A"})
+        charStrings = {}
+        for i, glyphName in enumerate(glyphOrder):
+            pen = T2CharStringPen(500, None)
+            pen.moveTo((0, 0))
+            pen.lineTo((100 + i * 10, 0))
+            pen.lineTo((0, 100))
+            pen.closePath()
+            charStrings[glyphName] = pen.getCharString()
+        fb.setupCFF("TestCFF", {}, charStrings, {})
+        fb.setupHorizontalMetrics({glyphName: (500, 0) for glyphName in glyphOrder})
+        fb.setupHorizontalHeader()
+        fb.setupNameTable({"familyName": "TestCFF", "styleName": "Regular"})
+        fb.setupOS2()
+        fb.setupPost(keepGlyphNames=False)
+        buf = BytesIO()
+        fb.save(buf)
+        data = buf.getvalue()
+        expected = _drawGlyphs(TTFont(BytesIO(data)))
+        font = TTFont(BytesIO(data))
+
+        convertCFFToCFF2(font)
+        buf = BytesIO()
+        font.save(buf)
+        buf.seek(0)
+        font = TTFont(buf)
+
+        # CFF2 has no glyph names: they come from the post table now.
+        self.assertEqual(font.getGlyphOrder(), [".notdef", "A", "glyph00002"])
+        self.assertEqual(_drawGlyphs(font), expected)
+
     def test_roundtrip_with_local_subrs(self):
         from fontTools.cffLib.CFFToCFF2 import convertCFFToCFF2
         from fontTools.cffLib.CFF2ToCFF import convertCFF2ToCFF
