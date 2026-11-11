@@ -3097,6 +3097,66 @@ def test_subset_COLRv1_drop_all_v0_glyphs(colrv1_path):
     assert colr.table.LayerRecordCount == 0
 
 
+def test_subset_COLRv1_keeps_v0_layer_order(tmp_path):
+    # The v0 layers of a COLRv1 table are rebuilt from the retained glyphs.
+    # They must follow the base glyph order, not the order of the glyph set,
+    # which varies between runs (PYTHONHASHSEED).
+    base_glyph_names = ["uni%04X" % i for i in range(0xE000, 0xE000 + 31)]
+    layer_glyph_names = ["layer%02d" % i for i in range(3)]
+    glyph_order = [".notdef"] + base_glyph_names + layer_glyph_names
+
+    pen = TTGlyphPen(glyphSet=None)
+    pen.moveTo((0, 0))
+    pen.lineTo((0, 500))
+    pen.lineTo((500, 500))
+    pen.closePath()
+    glyph = pen.glyph()
+
+    fb = FontBuilder(unitsPerEm=1024, isTTF=True)
+    fb.setupGlyphOrder(glyph_order)
+    fb.setupCharacterMap({int(name[3:], 16): name for name in base_glyph_names})
+    fb.setupGlyf({g: glyph for g in glyph_order})
+    fb.setupHorizontalMetrics({g: (500, 0) for g in glyph_order})
+    fb.setupHorizontalHeader()
+    fb.setupOS2()
+    fb.setupPost()
+    fb.setupNameTable({"familyName": "TestCOLRv1", "styleName": "Regular"})
+    colorGlyphs = {
+        # Layer counts of 1 to 3, so that the layer indices differ.
+        name: [(layer_glyph_names[j], j) for j in range(i % 3 + 1)]
+        for i, name in enumerate(base_glyph_names[1:])
+    }
+    colorGlyphs[base_glyph_names[0]] = {
+        "Format": ot.PaintFormat.PaintGlyph,
+        "Paint": (ot.PaintFormat.PaintSolid, 0),
+        "Glyph": "layer00",
+    }
+    fb.setupCOLR(colorGlyphs)
+    fb.setupCPAL([[(1.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 1.0), (0.0, 0.0, 1.0, 1.0)]])
+    font_path = tmp_path / "TestCOLRv1.ttf"
+    fb.save(font_path)
+
+    subset_path = tmp_path / "TestCOLRv1.subset.ttf"
+    subset.main(
+        [
+            str(font_path),
+            "--glyph-names",
+            f"--output-file={subset_path}",
+            "--unicodes=E000-E01E",
+        ]
+    )
+    colr = TTFont(subset_path)["COLR"].table
+
+    assert colr.Version == 1
+    baseRecords = colr.BaseGlyphRecordArray.BaseGlyphRecord
+    assert [r.BaseGlyph for r in baseRecords] == base_glyph_names[1:]
+    firstLayerIndex = 0
+    for record in baseRecords:
+        assert record.FirstLayerIndex == firstLayerIndex
+        firstLayerIndex += record.NumLayers
+    assert firstLayerIndex == len(colr.LayerRecordArray.LayerRecord)
+
+
 def test_subset_COLRv1_no_ClipList(colrv1_path):
     font = TTFont(colrv1_path)
     font["COLR"].table.ClipList = None  # empty ClipList

@@ -2781,8 +2781,9 @@ def subset_glyphs(self, s):
     # https://github.com/fonttools/fonttools/issues/2461
     s.glyphs = s.glyphs_colred
 
+    # Keep the original order: s.glyphs is a set, whose order varies between runs.
     self.ColorLayers = {
-        g: self.ColorLayers[g] for g in s.glyphs if g in self.ColorLayers
+        g: layers for g, layers in self.ColorLayers.items() if g in s.glyphs
     }
     if self.version == 0:
         return bool(self.ColorLayers)
