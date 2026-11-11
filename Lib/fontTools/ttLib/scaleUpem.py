@@ -373,7 +373,8 @@ def visit(visitor, varData):
 
 
 def _setup_scale_paint(paint, scale):
-    if -2 <= scale <= 2 - (1 >> 14):
+    # PaintScaleUniform stores the scale as F2Dot14, up to 2 - 1/16384.
+    if -2 <= scale <= 2 - 1 / (1 << 14):
         paint.Format = otTables.PaintFormat.PaintScaleUniform
         paint.scale = scale
         return
