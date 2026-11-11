@@ -38,6 +38,9 @@ def _convertCFF2ToCFF(cff, otFont):
     topDictData = TopDictIndex(None)
     for item in cff.topDictIndex:
         # Iterate over, such that all are decompiled
+        # Load the CharStrings, and with them the FDSelect, while the glyph order
+        # that reading the FDSelect of a CFF2 font needs is still available.
+        item.CharStrings
         item.cff2GetGlyphOrder = None
         topDictData.append(item)
     cff.topDictIndex = topDictData
