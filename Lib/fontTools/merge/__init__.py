@@ -22,6 +22,7 @@ import fontTools.merge.base
 from fontTools.merge.cmap import (
     computeMegaGlyphOrder,
     computeMegaCmap,
+    cmapPostMerge,
     renameCFFCharStrings,
     _flattenDmap,
 )
@@ -230,6 +231,7 @@ class Merger(object):
 
     def _postMerge(self, font):
         layoutPostMerge(font)
+        cmapPostMerge(font)
         self._dropPostGlyphNamesIfNeeded(font)
 
         if "OS/2" in font:

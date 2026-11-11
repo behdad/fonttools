@@ -474,6 +474,44 @@ def test_merge_extended_uvs(first_format, second_format, high_glyph_ids):
                 )
 
 
+@pytest.mark.parametrize(
+    "non_bmp, extra_range",
+    [(False, False), (True, False), (False, True)],
+)
+def test_merge_cmap_exceeding_format4_capacity(non_bmp, extra_range):
+    fontfiles = []
+    expected_cmap = {}
+    expected_uvs = []
+    for first_gid, start in [(0x20, 0x800), (0x40, 0x800 + 20000)]:
+        font = ttLib.TTFont(_make_fontfile_with_glyphs(first_gid, 3))
+        font.ensureDecompiled()
+        glyphs = font.getGlyphOrder()[1:]
+        cmap = {start + i: glyphs[i % 2] for i in range(20000)}
+        if first_gid == 0x40:
+            if non_bmp:
+                cmap[0x10000] = glyphs[0]
+            if extra_range:
+                cmap.update(
+                    {0x800 + 40000 + 100 + i: glyphs[i % 2] for i in range(1000)}
+                )
+        fb = FontBuilder(font=font)
+        fb.setupCharacterMap(
+            cmap, uvs=[(start, 0xFE0F, None), (start + 1, 0xFE0F, glyphs[0])]
+        )
+        fb.setupOS2()
+        fb.setupPost()
+        fontfiles.append(_compile(font))
+        expected_cmap.update(cmap)
+        expected_uvs.extend([(start, None), (start + 1, glyphs[0])])
+
+    merged = _merge_and_recompile(fontfiles)
+    assert merged.getBestCmap() == expected_cmap
+    actual_uvs = merged["cmap"].getcmap(0, 5).uvsDict
+    assert {selector: dict(mappings) for selector, mappings in actual_uvs.items()} == {
+        0xFE0F: dict(expected_uvs)
+    }
+
+
 @pytest.mark.parametrize("reverse_order", [False, True])
 def test_merge_prefers_format15_uvs(reverse_order):
     font = ttLib.TTFont(_make_fontfile_with_glyphs(0x10000, 4))
