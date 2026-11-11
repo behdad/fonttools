@@ -449,6 +449,24 @@ class CFF2ToCFFTest(unittest.TestCase):
         self.assertEqual(font.getGlyphOrder(), [".notdef", "cid00001", "cid00002"])
         self.assertEqual(_drawGlyphs(font), expected)
 
+    def test_FDSelect_not_yet_loaded(self):
+        # A freshly loaded font reads its FDSelect lazily, which needs the CFF2
+        # glyph order that the conversion drops. Load the font as the
+        # CFF2ToCFF command does.
+        font = _makeCFF2Font([".notdef", "A", "B"], fdSelect=[0, 1, 1])
+        expected = _drawGlyphs(font)
+        buf = BytesIO()
+        font.save(buf)
+        buf.seek(0)
+        font = TTFont(buf, recalcBBoxes=False)
+
+        font = _convertAndReload(font)
+
+        topDict = font["CFF "].cff[0]
+        self.assertEqual(len(topDict.FDArray), 2)
+        self.assertEqual(topDict.FDSelect.gidArray, [0, 1, 1])
+        self.assertEqual(_drawGlyphs(font), expected)
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
