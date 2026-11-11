@@ -5,6 +5,7 @@
 from fontTools.merge.unicode import is_Default_Ignorable
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 import logging
+import struct
 
 log = logging.getLogger("fontTools.merge")
 
@@ -210,6 +211,31 @@ def computeMegaCmap(merger, cmapTables):
                     )
 
     merger.uvsDict = computeMegaUvs(merger, chosenUvsTables)
+
+
+def cmapPostMerge(font):
+    """Check the generated BMP subtable against the final glyph order."""
+    from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
+
+    if "cmap" not in font:
+        return
+    cmap = font["cmap"]
+    for index, subtable in enumerate(cmap.tables):
+        if subtable.format != 4:
+            continue
+        try:
+            subtable.compile(font)
+        except (struct.error, OverflowError):
+            # Format 4's length and array offsets are limited to 16 bits.
+            if cmap.getcmap(3, 10) is None:
+                full = CmapSubtable.newSubtable(12)
+                full.platformID, full.platEncID, full.language = 3, 10, 0
+                full.cmap = subtable.cmap
+                cmap.tables[index] = full
+            else:
+                del cmap.tables[index]
+            cmap.numSubTables = len(cmap.tables)
+        break
 
 
 def renameCFFCharStrings(merger, glyphOrder, cffTable):
