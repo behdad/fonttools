@@ -3459,6 +3459,26 @@ def test_preserve_all_standard_name_IDs_by_default(ttf_path):
     assert {7, 13}.issubset(nameIDs)
 
 
+def test_subtract_name_ID_from_default(ttf_path):
+    font = TTFont(ttf_path)
+    name = font["name"]
+    name.setName("Test trademark", 7, 3, 1, 0x409)
+    name.setName("Test license", 13, 3, 1, 0x409)
+
+    options = subset.Options()
+    options.parse_opts(["--name-IDs-=7"])
+    options.name_legacy = True
+    options.name_languages = ["*"]
+
+    subsetter = subset.Subsetter(options)
+    subsetter.populate(unicodes=font.getBestCmap().keys())
+    subsetter.subset(font)
+
+    nameIDs = {n.nameID for n in font["name"].names}
+    assert 7 not in nameIDs
+    assert 13 in nameIDs
+
+
 def test_prune_unused_user_name_IDs_with_keep_all(ttf_path):
     font = TTFont(ttf_path)
 
