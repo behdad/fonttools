@@ -6,12 +6,14 @@ from fontTools.misc.textTools import (
     bytechr,
     byteord,
     bytesjoin,
+    readHex,
     strjoin,
     tobytes,
     tostr,
     safeEval,
 )
 from fontTools.misc.encodingTools import getEncoding
+from fontTools.misc.xmlWriter import ILLEGAL_XML_CHARS
 from fontTools.ttLib import newTable
 from fontTools.ttLib.ttVisitor import TTVisitor
 from fontTools import ttLib
@@ -608,6 +610,10 @@ class NameRecord(object):
             unistr = self.toUnicode()
         except UnicodeDecodeError:
             unistr = None
+        if unistr is not None:
+            hexEncoded = any(ord(c) in ILLEGAL_XML_CHARS for c in unistr)
+        else:
+            hexEncoded = any(c in ILLEGAL_XML_CHARS for c in self.toBytes())
         attrs = [
             ("nameID", self.nameID),
             ("platformID", self.platformID),
@@ -615,12 +621,16 @@ class NameRecord(object):
             ("langID", hex(self.langID)),
         ]
 
-        if unistr is None or not self.encodingIsUnicodeCompatible():
+        if hexEncoded:
+            attrs.append(("encoding", "hex"))
+        elif unistr is None or not self.encodingIsUnicodeCompatible():
             attrs.append(("unicode", unistr is not None))
 
         writer.begintag("namerecord", attrs)
         writer.newline()
-        if unistr is not None:
+        if hexEncoded:
+            writer.dumphex(self.toBytes())
+        elif unistr is not None:
             writer.write(unistr)
         else:
             writer.write8bit(self.string)
@@ -633,6 +643,9 @@ class NameRecord(object):
         self.platformID = safeEval(attrs["platformID"])
         self.platEncID = safeEval(attrs["platEncID"])
         self.langID = safeEval(attrs["langID"])
+        if attrs.get("encoding") == "hex":
+            self.string = readHex(content)
+            return
         s = strjoin(content).strip()
         encoding = self.getEncoding()
         if self.encodingIsUnicodeCompatible() or safeEval(
