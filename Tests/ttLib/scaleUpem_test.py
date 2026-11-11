@@ -362,3 +362,55 @@ def test_scale_upem_paint_glyph2():
     assert paint.Format == otTables.PaintFormat.PaintScaleUniform
     assert paint.Paint.Format == otTables.PaintFormat.PaintGlyph2
     assert paint.Paint.Glyph == "high"
+
+
+@pytest.mark.parametrize("factor", [0.5, 2, 3])
+def test_scale_upem_colrv1_saves(factor):
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 0))
+    pen.lineTo((0, 500))
+    pen.lineTo((500, 500))
+    pen.closePath()
+    glyph = pen.glyph()
+    glyphOrder = [".notdef", "A", "layer"]
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(glyphOrder)
+    fb.setupCharacterMap({0x41: "A"})
+    fb.setupGlyf({name: glyph for name in glyphOrder})
+    fb.setupHorizontalMetrics({name: (500, 0) for name in glyphOrder})
+    fb.setupHorizontalHeader()
+    fb.setupNameTable({"familyName": "TestCOLRv1", "styleName": "Regular"})
+    fb.setupOS2()
+    fb.setupPost()
+    fb.setupCPAL([[(1.0, 0.0, 0.0, 1.0)]])
+    fb.setupCOLR(
+        {
+            "A": {
+                "Format": ot.PaintFormat.PaintGlyph,
+                "Paint": (ot.PaintFormat.PaintSolid, 0),
+                "Glyph": "layer",
+            }
+        }
+    )
+    font = fb.font
+
+    scale_upem(font, int(1000 * factor))
+    stream = BytesIO()
+    font.save(stream)
+    font = TTFont(BytesIO(stream.getvalue()))
+
+    # The base glyph paint is scaled by the factor, and the PaintGlyph inside
+    # by its inverse: a factor of 2 or 0.5 needs a scale of 2 somewhere, which
+    # does not fit in the F2Dot14 of PaintScaleUniform.
+    paint = font["COLR"].table.BaseGlyphList.BaseGlyphPaintRecord[0].Paint
+    for scale in (factor, 1 / factor):
+        if scale < 2:
+            assert paint.Format == ot.PaintFormat.PaintScaleUniform
+        else:
+            assert paint.Format == ot.PaintFormat.PaintTransform
+            assert paint.Transform.xx == paint.Transform.yy == scale
+        paint = paint.Paint
+    assert paint.Format == ot.PaintFormat.PaintGlyph
