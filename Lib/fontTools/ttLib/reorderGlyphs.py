@@ -71,6 +71,12 @@ class ReorderCoverage(ReorderRule):
     def apply(self, font: ttLib.TTFont, value: otBase.BaseTable) -> None:
         coverage = _get_dotted_attr(value, self.coverage_attr)
 
+        if coverage is None:
+            # A null offset, such as the ExtendedShapeCoverage or the
+            # HorizGlyphCoverage of a MATH table without extended shapes or
+            # horizontal variants: nothing to reorder.
+            return
+
         if type(coverage) is not list:
             # Normal path, process one coverage that might have a parallel list
             parallel_list = None
