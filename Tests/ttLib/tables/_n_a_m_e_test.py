@@ -464,6 +464,26 @@ class NameRecordTest(unittest.TestCase):
         xml = writer.file.getvalue().decode("utf_8").strip()
         return xml.split(writer.newlinestr.decode("utf_8"))[1:]
 
+    def test_xml_roundtrip_xml_unsafe_names(self):
+        for payload, platformID, platEncID, langID in (
+            (b"\x00A\xff\xff\x00B", 3, 1, 0x409),
+            (b"A\x01B", 1, 0, 0),
+            (b"\xd8\x00", 0, 4, 0),
+        ):
+            with self.subTest(payload=payload, platformID=platformID):
+                font = TTFont()
+                font["name"] = newTable("name")
+                font["name"].names = [
+                    makeName(payload, 5, platformID, platEncID, langID)
+                ]
+                original = names(font["name"])
+                xml = BytesIO()
+                font.saveXML(xml, tables=["name"])
+
+                restored = TTFont()
+                restored.importXML(BytesIO(xml.getvalue()))
+                self.assertEqual(names(restored["name"]), original)
+
     def test_toXML_utf16be(self):
         name = makeName("Foo Bold", 111, 0, 2, 7)
         self.assertEqual(
