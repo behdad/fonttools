@@ -2,7 +2,7 @@ from fontTools.cffLib import PrivateDict
 from fontTools.cffLib.specializer import stringToProgram
 from fontTools.misc.testTools import getXML, parseXML
 from fontTools.misc.psCharStrings import (
-    CharStringDecompileError,
+    CharStringCompileError,
     T1CharString,
     T2CharString,
     encodeFloat,
@@ -336,23 +336,50 @@ if __name__ == "__main__":
     sys.exit(unittest.main())
 
 
-@pytest.mark.parametrize("operator", [b"", b"("])
-def test_t2_unknown_operator(operator):
-    # An undefined operator used to end the charstring silently, so that the
-    # rest of the glyph was lost when the charstring was compiled again.
+@pytest.mark.parametrize("isCFF2", [False, True])
+@pytest.mark.parametrize(
+    "operator, token", [(b"\x02", "unknown_2"), (b"\x0c\x28", "unknown_12_40")]
+)
+def test_t2_unknown_operator(operator, token, isCFF2):
+    # An undefined operator is ignored and the stack is cleared, as the CFF2
+    # specification requires. It used to end the charstring, so that the rest
+    # of the glyph was lost when the charstring was compiled again.
+    private = PrivateDict()
+    if isCFF2:
+        private._isCFF2 = True
+        private.nominalWidthX = private.defaultWidthX = None
+    end = "" if isCFF2 else " endchar"
     head = T2CharString(program=stringToProgram("0 0 rmoveto 100 0 rlineto"))
-    tail = T2CharString(program=stringToProgram("0 100 rlineto endchar"))
-    head.compile()
-    tail.compile()
-    bytecode = head.bytecode + operator + tail.bytecode
+    tail = T2CharString(program=stringToProgram("0 100 rlineto" + end))
+    head.compile(isCFF2=isCFF2)
+    tail.compile(isCFF2=isCFF2)
+    # The operands 1 2 before the operator are dropped with the stack.
+    bytecode = head.bytecode + b"\x8c\x8d" + operator + tail.bytecode
 
-    cs = T2CharString(bytecode=bytecode, private=PrivateDict())
-    with pytest.raises(CharStringDecompileError, match="unknown operator"):
-        cs.decompile()
+    cs = T2CharString(bytecode=bytecode, private=private)
+    pen = RecordingPen()
+    cs.draw(pen)
+    assert pen.value == [
+        ("moveTo", ((0, 0),)),
+        ("lineTo", ((100, 0),)),
+        ("lineTo", ((100, 100),)),
+        ("closePath", ()),
+    ]
 
-    cs = T2CharString(bytecode=bytecode, private=PrivateDict())
-    with pytest.raises(CharStringDecompileError, match="unknown operator"):
-        cs.draw(RecordingPen())
+    cs = T2CharString(bytecode=bytecode, private=private)
+    cs.decompile()
+    assert cs.program[6:9] == [1, 2, token]
+    xml = getXML(cs.toXML)
+    cs.compile(isCFF2=isCFF2)
+    assert cs.bytecode == bytecode
+
+    cs = T2CharString(private=private)
+    for name, attrs, content in parseXML(
+        ["<CharString>", " ".join(xml), "</CharString>"]
+    ):
+        cs.fromXML(name, attrs, content)
+    cs.compile(isCFF2=isCFF2)
+    assert cs.bytecode == bytecode
 
 
 def test_t1_unknown_operator():
@@ -360,6 +387,29 @@ def test_t1_unknown_operator():
     tail = T1CharString(program=[0, 100, "rlineto", "closepath", "endchar"])
     head.compile()
     tail.compile()
-    cs = T1CharString(bytecode=head.bytecode + b"" + tail.bytecode)
-    with pytest.raises(CharStringDecompileError, match="unknown operator: 2"):
-        cs.decompile()
+    bytecode = head.bytecode + b"\x8c\x8d\x02" + tail.bytecode
+
+    cs = T1CharString(bytecode=bytecode)
+    pen = RecordingPen()
+    cs.draw(pen)
+    assert pen.value == [
+        ("moveTo", ((0, 0),)),
+        ("lineTo", ((0, 100),)),
+        ("closePath", ()),
+    ]
+
+    cs = T1CharString(bytecode=bytecode)
+    cs.decompile()
+    assert cs.program[6:9] == [1, 2, "unknown_2"]
+    cs.compile()
+    assert cs.bytecode == bytecode
+
+
+@pytest.mark.parametrize(
+    "token", ["unknown_5", "unknown_12", "unknown_12_0", "unknown_28", "unknown_256"]
+)
+def test_unknown_operator_token_compile_error(token):
+    # Only operators that are actually undefined can be written this way.
+    cs = T2CharString(program=[token])
+    with pytest.raises(CharStringCompileError, match="illegal operator"):
+        cs.compile()
