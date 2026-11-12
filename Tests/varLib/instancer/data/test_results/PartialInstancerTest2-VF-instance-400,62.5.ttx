@@ -524,14 +524,14 @@
     <!-- AxisValueCount=2 -->
     <AxisValueArray>
       <AxisValue index="0" Format="3">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Weight -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="261"/>  <!-- Regular -->
         <Value value="400.0"/>
         <LinkedValue value="700.0"/>
       </AxisValue>
       <AxisValue index="1" Format="2">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Width -->
         <Flags value="0"/>
         <ValueNameID value="288"/>  <!-- ExtraCondensed -->
         <NominalValue value="62.5"/>

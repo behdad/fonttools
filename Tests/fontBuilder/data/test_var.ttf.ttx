@@ -359,49 +359,49 @@
     <!-- AxisValueCount=8 -->
     <AxisValueArray>
       <AxisValue index="0" Format="1">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Left -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="261"/>  <!-- Neutral -->
         <Value value="0.0"/>
       </AxisValue>
       <AxisValue index="1" Format="1">
-        <AxisIndex value="0"/>
+        <AxisIndex value="0"/>  <!-- Left -->
         <Flags value="0"/>
         <ValueNameID value="256"/>  <!-- Left -->
         <Value value="100.0"/>
       </AxisValue>
       <AxisValue index="2" Format="1">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Right -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="261"/>  <!-- Neutral -->
         <Value value="0.0"/>
       </AxisValue>
       <AxisValue index="3" Format="1">
-        <AxisIndex value="1"/>
+        <AxisIndex value="1"/>  <!-- Right -->
         <Flags value="0"/>
         <ValueNameID value="257"/>  <!-- Right -->
         <Value value="100.0"/>
       </AxisValue>
       <AxisValue index="4" Format="1">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Up -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="261"/>  <!-- Neutral -->
         <Value value="0.0"/>
       </AxisValue>
       <AxisValue index="5" Format="1">
-        <AxisIndex value="2"/>
+        <AxisIndex value="2"/>  <!-- Up -->
         <Flags value="0"/>
         <ValueNameID value="258"/>  <!-- Up -->
         <Value value="100.0"/>
       </AxisValue>
       <AxisValue index="6" Format="1">
-        <AxisIndex value="3"/>
+        <AxisIndex value="3"/>  <!-- Down -->
         <Flags value="2"/>  <!-- ElidableAxisValueName -->
         <ValueNameID value="261"/>  <!-- Neutral -->
         <Value value="0.0"/>
       </AxisValue>
       <AxisValue index="7" Format="1">
-        <AxisIndex value="3"/>
+        <AxisIndex value="3"/>  <!-- Down -->
         <Flags value="0"/>
         <ValueNameID value="259"/>  <!-- Down -->
         <Value value="100.0"/>
