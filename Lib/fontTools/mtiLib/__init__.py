@@ -974,7 +974,7 @@ def parseLookup(lines, tableTag, font, lookupMap=None):
                     subtable = parseLookupSubTable(lines, font, lookupMap)
                     assert lookup.LookupType == subtable.LookupType
                     subtables.append(subtable)
-            if lines.peeks()[0] in ("% subtable", "subtable end"):
+            if lines.peeks()[0].lower() in ("% subtable", "subtable end"):
                 next(lines)
     lines.expect("lookup end")
 

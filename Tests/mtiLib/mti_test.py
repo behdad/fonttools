@@ -6,6 +6,7 @@ import difflib
 from io import StringIO
 import os
 import sys
+import threading
 import pytest
 
 
@@ -422,6 +423,27 @@ class MtiTest:
         font = TTFont()
         font.setGlyphOrder(celf.GLYPH_ORDER)
         return font
+
+    def test_subtable_end_case_insensitive(self):
+        with open(self.getpath("mti/gposkernset.txt"), "rt", encoding="utf-8") as f:
+            text = f.read().replace("subtable end", "Subtable End")
+        font = self.create_font()
+        result = []
+
+        # Parse in a daemon thread, so that the test fails instead of hanging
+        # if parsing never terminates.
+        thread = threading.Thread(
+            target=lambda: result.append(
+                mtiLib.build(StringIO(text), font, tableTag="GPOS")
+            ),
+            daemon=True,
+        )
+        thread.start()
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "parsing did not terminate"
+
+        (table,) = result
+        assert [l.SubTableCount for l in table.table.LookupList.Lookup] == [2]
 
     def check_mti_file(self, name, tableTag=None):
         xml_expected_path = self.getpath(
