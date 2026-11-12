@@ -2517,9 +2517,12 @@ def closure_glyphs(self, s):
 def subset_glyphs(self, s):
     table = self.table.Baseline
     if table.Format in (1, 3):
+        # Go through the glyphs in glyph order: s.glyphs is a set, whose order
+        # varies between runs, and Counter.most_common() breaks ties by the
+        # order in which the values were first seen.
         baselines = {
             glyph: table.BaselineValues.get(glyph, table.DefaultBaseline)
-            for glyph in s.glyphs
+            for glyph in sorted(s.glyphs, key=s.reverseOrigGlyphMap.__getitem__)
         }
         if len(baselines) > 0:
             mostCommon, _cnt = Counter(baselines.values()).most_common(1)[0]
@@ -2700,8 +2703,10 @@ def subset_glyphs(self, s):
     if prop.Format == 0:
         return prop.DefaultProperties != 0
     elif prop.Format == 1:
+        # Go through the glyphs in glyph order, as in 'bsln' above.
         prop.Properties = {
-            g: prop.Properties.get(g, prop.DefaultProperties) for g in s.glyphs
+            g: prop.Properties.get(g, prop.DefaultProperties)
+            for g in sorted(s.glyphs, key=s.reverseOrigGlyphMap.__getitem__)
         }
         mostCommon, _cnt = Counter(prop.Properties.values()).most_common(1)[0]
         prop.DefaultProperties = mostCommon
