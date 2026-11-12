@@ -260,6 +260,34 @@ class GlyphsToQuadraticTest(object):
         pen.closePath()
         assert not glyph_to_quadratic(glyph)
 
+    def test_mixed_curves_kept_cubic_not_modified(self):
+        glyph = ufoLib2.objects.Glyph()
+        pen = glyph.getPen()
+        pen.moveTo((0, 0))
+        pen.curveTo((0, 100), (100, 0), (100, 100))
+        pen.closePath()
+        # an S-shaped cubic can't be approximated by a single quadratic, so
+        # with all_quadratic=False it is kept as is
+        assert not glyph_to_quadratic(glyph, all_quadratic=False)
+        points = [(p.x, p.y, p.segmentType) for p in glyph[0]]
+        assert points == [
+            (0, 0, "line"),
+            (0, 100, None),
+            (100, 0, None),
+            (100, 100, "curve"),
+        ]
+        assert all(isinstance(v, int) for x, y, _ in points for v in (x, y))
+
+    def test_mixed_curves_converted_modified(self):
+        glyph = ufoLib2.objects.Glyph()
+        pen = glyph.getPen()
+        pen.moveTo((0, 0))
+        # a degree-elevated quadratic, converted back to one quadratic
+        pen.curveTo((0, 60), (30, 90), (90, 90))
+        pen.closePath()
+        assert glyph_to_quadratic(glyph, all_quadratic=False)
+        assert glyph[0][-1].segmentType == "qcurve"
+
     def test_open_paths(self):
         glyph = ufoLib2.objects.Glyph()
         pen = glyph.getPen()
