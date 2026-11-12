@@ -985,13 +985,13 @@ def _writeGuidelines(
     for guideline in guidelines:
         attrs = OrderedDict()
         x = guideline.get("x")
-        if x is not None:
+        if x is not None and x != 0:
             attrs["x"] = repr(x)
         y = guideline.get("y")
-        if y is not None:
+        if y is not None and y != 0:
             attrs["y"] = repr(y)
         angle = guideline.get("angle")
-        if angle is not None:
+        if angle is not None and angle != 0:
             attrs["angle"] = repr(angle)
         name = guideline.get("name")
         if name is not None:
@@ -1343,8 +1343,10 @@ def _readGlyphFromTreeFormat2(
                 raise GlifLibError("Unknown children in guideline element.")
             attrib = dict(element.attrib)
             for attr in ("x", "y", "angle"):
+                value = 0
                 if attr in attrib:
-                    attrib[attr] = _number(attrib[attr])
+                    value = _number(attrib[attr])
+                attrib[attr] = value
             guidelines.append(attrib)
         elif element.tag == "anchor":
             if validate and len(element):

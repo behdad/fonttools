@@ -379,7 +379,7 @@ class TestGLIF2(unittest.TestCase):
 		<glyph name="a" format="2">
 			<guideline x="1"/>
 			<guideline y="1"/>
-			<guideline x="1" y="1" angle="0"/>
+			<guideline x="1" y="1"/>
 			<guideline x="1" y="1" angle="360"/>
 			<guideline x="1.1" y="1.1" angle="45.5"/>
 			<guideline x="1" name="a"/>
@@ -390,7 +390,7 @@ class TestGLIF2(unittest.TestCase):
 		"""
         py = """
 		glyph.name = "a"
-		glyph.guidelines = [{"x" : 1}, {"y" : 1}, {"angle" : 0, "x" : 1, "y" : 1}, {"angle" : 360, "x" : 1, "y" : 1}, {"angle" : 45.5, "x" : 1.1, "y" : 1.1}, {"name" : "a", "x" : 1}, {"color" : "1,1,1,1", "x" : 1}]
+		glyph.guidelines = [{"angle" : 0, "x" : 1, "y" : 0}, {"angle" : 0, "x" : 0, "y" : 1}, {"angle" : 0, "x" : 1, "y" : 1}, {"angle" : 360, "x" : 1, "y" : 1}, {"angle" : 45.5, "x" : 1.1, "y" : 1.1}, {"angle" : 0, "name" : "a", "x" : 1, "y" : 0}, {"angle" : 0, "color" : "1,1,1,1", "x" : 1, "y" : 0}]
 		"""
         resultGlif = self.pyToGLIF(py)
         resultPy = self.glifToPy(glif)
@@ -459,10 +459,19 @@ class TestGLIF2(unittest.TestCase):
 		glyph.guidelines = [{"angle" : 45, "y" : 1}]
 		"""
         result = self.pyToGLIF(py)
-        expected = '<glyph name="a" format="2">\n  <guideline y="1" angle="45"/>\n  <outline>\n  </outline>\n</glyph>'
+        expected = """
+		<glyph name="a" format="2">
+			<guideline y="1" angle="45"/>
+			<outline>
+			</outline>
+		</glyph>
+		"""
         self.assertEqual(result, expected)
         result = self.glifToPy(glif)
-        expected = 'glyph.name = "a"\nglyph.guidelines = [{"angle" : 45, "y" : 1}]'
+        expected = """
+		glyph.name = "a"
+		glyph.guidelines = [{"angle" : 45, "x" : 0, "y" : 1}]
+		"""
         self.assertEqual(result, expected)
 
     def testGuidelines_y_missing(self):
@@ -479,10 +488,19 @@ class TestGLIF2(unittest.TestCase):
 		glyph.guidelines = [{"angle" : 45, "x" : 1}]
 		"""
         result = self.pyToGLIF(py)
-        expected = '<glyph name="a" format="2">\n  <guideline x="1" angle="45"/>\n  <outline>\n  </outline>\n</glyph>'
+        expected = """
+		<glyph name="a" format="2">
+			<guideline x="1" angle="45"/>
+			<outline>
+			</outline>
+		</glyph>
+		"""
         self.assertEqual(result, expected)
         result = self.glifToPy(glif)
-        expected = 'glyph.name = "a"\nglyph.guidelines = [{"angle" : 45, "x" : 1}]'
+        expected = """
+		glyph.name = "a"
+		glyph.guidelines = [{"angle" : 45, "x" : 1, "y" : 0}]
+		"""
         self.assertEqual(result, expected)
 
     def testGuidelines_angle_missing(self):
@@ -496,13 +514,22 @@ class TestGLIF2(unittest.TestCase):
 		"""
         py = """
 		glyph.name = "a"
-		glyph.guidelines = [{"x" : 1, "y" : 1}]
+		glyph.guidelines = [{"x" : 1, "y" : 1, "angle" : 0}]
 		"""
         result = self.pyToGLIF(py)
-        expected = '<glyph name="a" format="2">\n  <guideline x="1" y="1"/>\n  <outline>\n  </outline>\n</glyph>'
+        expected = """
+		<glyph name="a" format="2">
+			<guideline x="1" y="1"/>
+			<outline>
+			</outline>
+		</glyph>
+		"""
         self.assertEqual(result, expected)
         result = self.glifToPy(glif)
-        expected = 'glyph.name = "a"\nglyph.guidelines = [{"x" : 1, "y" : 1}]'
+        expected = """
+		glyph.name = "a"
+		glyph.guidelines = [{"angle" : 0, "x" : 1, "y" : 1}]
+		"""
         self.assertEqual(result, expected)
 
     def testGuidelines_illegal_angle_out_of_range(self):
@@ -1733,8 +1760,8 @@ class TestGLIF2(unittest.TestCase):
     def testIdentifierConflict_legal_no_conflict(self):
         glif = """
 		<glyph name="a" format="2">
-			<guideline x="0" identifier="guideline1"/>
-			<guideline x="0" identifier="guideline2"/>
+			<guideline identifier="guideline1"/>
+			<guideline identifier="guideline2"/>
 			<anchor x="0" y="0" identifier="anchor1"/>
 			<anchor x="0" y="0" identifier="anchor2"/>
 			<outline>
@@ -1754,7 +1781,7 @@ class TestGLIF2(unittest.TestCase):
 		"""
         py = """
 		glyph.name = "a"
-		glyph.guidelines = [{"identifier" : "guideline1", "x" : 0}, {"identifier" : "guideline2", "x" : 0}]
+		glyph.guidelines = [{"angle" : 0, "identifier" : "guideline1", "x" : 0, "y" : 0}, {"angle" : 0, "identifier" : "guideline2", "x" : 0, "y" : 0}]
 		glyph.anchors = [{"identifier" : "anchor1", "x" : 0, "y" : 0}, {"identifier" : "anchor2", "x" : 0, "y" : 0}]
 		pointPen.beginPath(**{"identifier" : "contour1"})
 		pointPen.addPoint(*[(1, -2)], **{"identifier" : "point1", "segmentType" : "move", "smooth" : False})
