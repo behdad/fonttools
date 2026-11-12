@@ -2,6 +2,8 @@ from fontTools.cffLib import PrivateDict
 from fontTools.cffLib.specializer import stringToProgram
 from fontTools.misc.testTools import getXML, parseXML
 from fontTools.misc.psCharStrings import (
+    CharStringDecompileError,
+    T1CharString,
     T2CharString,
     encodeFloat,
     encodeFixed,
@@ -332,3 +334,32 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(unittest.main())
+
+
+@pytest.mark.parametrize("operator", [b"", b"("])
+def test_t2_unknown_operator(operator):
+    # An undefined operator used to end the charstring silently, so that the
+    # rest of the glyph was lost when the charstring was compiled again.
+    head = T2CharString(program=stringToProgram("0 0 rmoveto 100 0 rlineto"))
+    tail = T2CharString(program=stringToProgram("0 100 rlineto endchar"))
+    head.compile()
+    tail.compile()
+    bytecode = head.bytecode + operator + tail.bytecode
+
+    cs = T2CharString(bytecode=bytecode, private=PrivateDict())
+    with pytest.raises(CharStringDecompileError, match="unknown operator"):
+        cs.decompile()
+
+    cs = T2CharString(bytecode=bytecode, private=PrivateDict())
+    with pytest.raises(CharStringDecompileError, match="unknown operator"):
+        cs.draw(RecordingPen())
+
+
+def test_t1_unknown_operator():
+    head = T1CharString(program=[0, 500, "hsbw", 0, 0, "rmoveto"])
+    tail = T1CharString(program=[0, 100, "rlineto", "closepath", "endchar"])
+    head.compile()
+    tail.compile()
+    cs = T1CharString(bytecode=head.bytecode + b"" + tail.bytecode)
+    with pytest.raises(CharStringDecompileError, match="unknown operator: 2"):
+        cs.decompile()

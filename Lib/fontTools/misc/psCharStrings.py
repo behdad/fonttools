@@ -319,6 +319,10 @@ class CharStringCompileError(Exception):
     pass
 
 
+class CharStringDecompileError(Exception):
+    pass
+
+
 class SimpleT2Decompiler(object):
     def __init__(self, localSubrs, globalSubrs, private=None, blender=None):
         self.localSubrs = localSubrs
@@ -1252,6 +1256,12 @@ class T2CharString(object):
             index = index + 1
             handler = self.operandEncoding[b0]
             token, index = handler(self, b0, self.bytecode, index)
+            if token is None:
+                # read_operator returns None for an undefined operator. Going on
+                # would end the charstring here, and silently drop the rest of
+                # it when the charstring is compiled again.
+                op = b0 if b0 != 12 else (b0, byteord(self.bytecode[index - 1]))
+                raise CharStringDecompileError("unknown operator: %s" % (op,))
         else:
             if index >= len(self.program):
                 return None, 0, 0
