@@ -17,11 +17,12 @@ by Tal Leming and is copyright (c) 2005-2016, The RoboFab Developers:
 -	Just van Rossum
 """
 
-illegalCharacters = r"\" * + / : < > ? [ \ ] | \0".split(" ")
-illegalCharacters += [chr(i) for i in range(1, 32)]
+illegalCharacters = r"\" * + / : < > ? [ \ ] |".split(" ")
+illegalCharacters += [chr(i) for i in range(32)]
 illegalCharacters += [chr(0x7F)]
 reservedFileNames = "CON PRN AUX CLOCK$ NUL A:-Z: COM1".lower().split(" ")
-reservedFileNames += "LPT1 LPT2 LPT3 COM2 COM3 COM4".lower().split(" ")
+reservedFileNames += "LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9".lower().split(" ")
+reservedFileNames += "COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9".lower().split(" ")
 maxFileNameLength = 255
 
 

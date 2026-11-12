@@ -27,6 +27,26 @@ class UserNameToFilenameTest(unittest.TestCase):
         self.assertEqual(userNameToFileName("con.alt"), "_con.alt")
         self.assertEqual(userNameToFileName("alt.con"), "alt._con")
 
+    def test_nul_character(self):
+        self.assertEqual(userNameToFileName("a\0b", suffix=".ttx"), "a_b.ttx")
+
+    def test_reserved_device_names(self):
+        for prefix in ("com", "lpt"):
+            for number in range(1, 10):
+                name = f"{prefix}{number}"
+                with self.subTest(name=name):
+                    self.assertEqual(userNameToFileName(name), "_" + name)
+                    self.assertEqual(
+                        userNameToFileName(name + ".alt", suffix=".ttx"),
+                        "_" + name + ".alt.ttx",
+                    )
+
+    def test_reserved_device_name_collision(self):
+        self.assertEqual(
+            userNameToFileName("com5", existing=["_com5.ttx"], suffix=".ttx"),
+            "_com5000000000000001.ttx",
+        )
+
     def test_prefix_suffix(self):
         prefix = "TEST_PREFIX"
         suffix = "TEST_SUFFIX"

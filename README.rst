@@ -284,6 +284,7 @@ Copyrights
 
 | Copyright (c) 1999-2004 Just van Rossum, LettError
   (just@letterror.com)
+| Copyright (c) 2026 jdotc1
 | See `LICENSE <LICENSE>`__ for the full license.
 
 Copyright (c) 2000 BeOpen.com. All Rights Reserved.
