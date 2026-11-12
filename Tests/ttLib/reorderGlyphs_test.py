@@ -4,6 +4,8 @@ from io import BytesIO
 from pathlib import Path
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
+from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.reorderGlyphs import reorderGlyphs
 
@@ -100,6 +102,41 @@ def test_reorder_glyphs_cff():
 
     assert list(font["CFF "].cff.topDictIndex[0].CharStrings.charStrings.keys()) == ga
     assert font["CFF "].cff.topDictIndex[0].charset == ga
+
+
+def test_reorder_glyphs_math_null_coverage():
+    # buildMathTable leaves ExtendedShapeCoverage and HorizGlyphCoverage as null
+    # offsets when there are no extended shapes or horizontal variants.
+    fb = FontBuilder(1000, isTTF=True)
+    glyph_order = [".notdef", "a", "b", "c", "parenleft", "parenleft.size1"]
+    fb.setupGlyphOrder(glyph_order)
+    fb.setupGlyf({g: TTGlyphPen(None).glyph() for g in glyph_order})
+    fb.setupHorizontalMetrics({g: (500, 0) for g in glyph_order})
+    fb.setupHorizontalHeader()
+    fb.setupPost()
+    buildMathTable(
+        fb.font,
+        italicsCorrections={"a": 10, "c": 30, "b": 20},
+        vertGlyphVariants={
+            "parenleft": [("parenleft", 1000), ("parenleft.size1", 1500)]
+        },
+    )
+    buf = BytesIO()
+    fb.save(buf)
+    buf.seek(0)
+    font = TTFont(buf)
+    math = font["MATH"].table
+    assert math.MathGlyphInfo.ExtendedShapeCoverage is None
+    assert math.MathVariants.HorizGlyphCoverage is None
+
+    ga = font.getGlyphOrder()
+    ga = [ga[0]] + list(reversed(ga[1:]))
+    reorderGlyphs(font, ga)
+
+    italics = math.MathGlyphInfo.MathItalicsCorrectionInfo
+    assert italics.Coverage.glyphs == ["c", "b", "a"]
+    assert [v.Value for v in italics.ItalicsCorrection] == [30, 20, 10]
+    assert math.MathVariants.VertGlyphCoverage.glyphs == ["parenleft"]
 
 
 def test_reorder_glyphs_bad_length(caplog):
