@@ -965,6 +965,34 @@ class SubsetTest:
         )
         assert 0 == TTFont(subsetpath)["OS/2"].usMaxContext
 
+    @pytest.mark.parametrize("os2_version", [0, 1])
+    def test_recalc_max_context_old_os2_version(self, os2_version):
+        # usMaxContext only exists in OS/2 version 2 and later
+        font = TTFont()
+        font.importXML(self.getpath("Lobster.subset.ttx"))
+        os2 = font["OS/2"]
+        os2.version = os2_version
+        for attr in ("sxHeight", "sCapHeight", "usDefaultChar", "usBreakChar"):
+            delattr(os2, attr)
+        del os2.usMaxContext
+        if os2_version < 1:
+            del os2.ulCodePageRange1, os2.ulCodePageRange2
+        fontpath = self.temp_path(".otf")
+        font.save(fontpath)
+        subsetpath = self.temp_path(".otf")
+
+        subset.main(
+            [
+                fontpath,
+                "--recalc-max-context",
+                "--drop-tables+=GSUB,GPOS",
+                "--output-file=%s" % subsetpath,
+            ]
+        )
+        os2 = TTFont(subsetpath)["OS/2"]
+        assert os2.version == os2_version
+        assert not hasattr(os2, "usMaxContext")
+
     def test_retain_gids_ttf(self):
         fontpath = self.compile_font(self.getpath("TestTTF-Regular.ttx"), ".ttf")
         font = TTFont(fontpath)
