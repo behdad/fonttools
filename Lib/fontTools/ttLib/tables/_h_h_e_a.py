@@ -42,6 +42,24 @@ class table__h_h_e_a(DefaultTable.DefaultTable):
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/hhea
     """
 
+    tableVersion: int
+    ascent: int
+    descent: int
+    lineGap: int
+    advanceWidthMax: int
+    minLeftSideBearing: int
+    minRightSideBearing: int
+    xMaxExtent: int
+    caretSlopeRise: int
+    caretSlopeRun: int
+    caretOffset: int
+    reserved0: int
+    reserved1: int
+    reserved2: int
+    reserved3: int
+    metricDataFormat: int
+    numberOfHMetrics: int
+
     # Note: Keep in sync with table__v_h_e_a
 
     dependencies = ["hmtx", "glyf", "CFF ", "CFF2"]

@@ -36,6 +36,16 @@ class table__p_o_s_t(DefaultTable.DefaultTable):
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/post
     """
 
+    formatType: float
+    italicAngle: float
+    underlinePosition: int
+    underlineThickness: int
+    isFixedPitch: int
+    minMemType42: int
+    maxMemType42: int
+    minMemType1: int
+    maxMemType1: int
+
     dependencies = ["maxp", "MAXP"]
 
     def decompile(self, data, ttFont):

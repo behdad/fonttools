@@ -42,6 +42,24 @@ class table__v_h_e_a(DefaultTable.DefaultTable):
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/vhea
     """
 
+    tableVersion: int
+    ascent: int
+    descent: int
+    lineGap: int
+    advanceHeightMax: int
+    minTopSideBearing: int
+    minBottomSideBearing: int
+    yMaxExtent: int
+    caretSlopeRise: int
+    caretSlopeRun: int
+    caretOffset: int
+    reserved1: int
+    reserved2: int
+    reserved3: int
+    reserved4: int
+    metricDataFormat: int
+    numberOfVMetrics: int
+
     # Note: Keep in sync with table__h_h_e_a
 
     dependencies = ["vmtx", "glyf", "CFF ", "CFF2"]

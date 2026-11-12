@@ -43,6 +43,24 @@ class table__h_e_a_d(DefaultTable.DefaultTable):
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/head
     """
 
+    tableVersion: float
+    fontRevision: float
+    checkSumAdjustment: int
+    magicNumber: int
+    flags: int
+    unitsPerEm: int
+    created: int
+    modified: int
+    xMin: int
+    yMin: int
+    xMax: int
+    yMax: int
+    macStyle: int
+    lowestRecPPEM: int
+    fontDirectionHint: int
+    indexToLocFormat: int
+    glyphDataFormat: int
+
     dependencies = ["maxp", "MAXP", "loca", "LOCA", "CFF ", "CFF2"]
 
     def decompile(self, data, ttFont):

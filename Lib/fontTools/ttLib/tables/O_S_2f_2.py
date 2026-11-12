@@ -24,6 +24,18 @@ panoseFormat = """
 
 
 class Panose(object):
+
+    bFamilyType: int
+    bSerifStyle: int
+    bWeight: int
+    bProportion: int
+    bContrast: int
+    bStrokeVariation: int
+    bArmStyle: int
+    bLetterForm: int
+    bMidline: int
+    bXHeight: int
+
     def __init__(self, **kwargs):
         _, names, _ = sstruct.getformat(panoseFormat)
         for name in names:
@@ -114,6 +126,37 @@ class table_O_S_2f_2(DefaultTable.DefaultTable):
 
     See also https://learn.microsoft.com/en-us/typography/opentype/spec/os2
     """
+
+    version: int
+    xAvgCharWidth: int
+    usWeightClass: int
+    usWidthClass: int
+    fsType: int
+    ySubscriptXSize: int
+    ySubscriptYSize: int
+    ySubscriptXOffset: int
+    ySubscriptYOffset: int
+    ySuperscriptXSize: int
+    ySuperscriptYSize: int
+    ySuperscriptXOffset: int
+    ySuperscriptYOffset: int
+    yStrikeoutSize: int
+    yStrikeoutPosition: int
+    sFamilyClass: int
+    panose: Panose
+    ulUnicodeRange1: int
+    ulUnicodeRange2: int
+    ulUnicodeRange3: int
+    ulUnicodeRange4: int
+    achVendID: str | bytes
+    fsSelection: int
+    usFirstCharIndex: int
+    usLastCharIndex: int
+    sTypoAscender: int
+    sTypoDescender: int
+    sTypoLineGap: int
+    usWinAscent: int
+    usWinDescent: int
 
     dependencies = ["head", "bhed"]
 
