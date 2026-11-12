@@ -20,6 +20,7 @@ from fontTools.otlLib.builder import (
     ChainContextPosBuilder,
     ChainContextSubstBuilder,
     LigatureSubstBuilder,
+    LookupBuilder,
     MultipleSubstBuilder,
     CursivePosBuilder,
     MarkBasePosBuilder,
@@ -91,6 +92,25 @@ def addOpenTypeFeaturesFromString(
     if filename:
         featurefile.name = filename
     addOpenTypeFeatures(font, featurefile, tables=tables, debug=debug)
+
+
+class EmptyGposLookup(LookupBuilder):
+    """A stand-in for when you want to insert empty lookups for varLib to
+    combine with the actual ones later."""
+
+    def __init__(self, font, location):
+        super().__init__(font, location, "GPOS", 2)
+
+    def build(self):
+        from fontTools.ttLib.tables import otTables as ot
+
+        lookup = ot.Lookup()
+        lookup.LookupType = 2
+        lookup.LookupFlag = 0
+        lookup.SubTable = []
+        lookup.SubTableCount = 0
+
+        return lookup
 
 
 class Builder(object):
@@ -1178,6 +1198,8 @@ class Builder(object):
         assert lookup_name in self.named_lookups_, lookup_name
         self.cur_lookup_ = None
         lookup = self.named_lookups_[lookup_name]
+        if lookup is None and self.cur_feature_name_ in ("kern", "dist"):
+            lookup = self.get_lookup_(None, EmptyGposLookup)
         if lookup is not None:  # skip empty named lookup
             self.add_lookup_to_feature_(lookup, self.cur_feature_name_)
 
