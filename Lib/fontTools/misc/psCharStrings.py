@@ -10,6 +10,7 @@ from fontTools.misc.fixedTools import (
 )
 from fontTools.misc.textTools import bytechr, byteord, bytesjoin, strjoin
 from fontTools.pens.boundsPen import BoundsPen
+import re
 import struct
 import logging
 
@@ -1214,9 +1215,12 @@ class T2CharString(object):
             i = i + 1
             if isinstance(token, str):
                 try:
-                    bytecode.extend(bytechr(b) for b in opcodes[token])
+                    opcode = opcodes[token]
                 except KeyError:
-                    raise CharStringCompileError("illegal operator: %s" % token)
+                    opcode = self._unknownOperatorOpcode(token)
+                    if opcode is None:
+                        raise CharStringCompileError("illegal operator: %s" % token)
+                bytecode.extend(bytechr(b) for b in opcode)
                 if token in ("hintmask", "cntrmask"):
                     bytecode.append(program[i])  # hint mask
                     i = i + 1
@@ -1232,6 +1236,26 @@ class T2CharString(object):
             log.error(bytecode)
             raise
         self.setBytecode(bytecode)
+
+    def _unknownOperatorOpcode(self, token):
+        """Return the opcode of an "unknown_<b0>" or "unknown_12_<b1>" token,
+        which getToken() produces for an undefined operator, or None."""
+        m = re.fullmatch(r"unknown_(?:(12)_)?(\d+)", token)
+        if m is None:
+            return None
+        if m.group(1):
+            op = opcode = (12, int(m.group(2)))
+        else:
+            opcode = (int(m.group(2)),)
+            op = opcode[0]
+        if (
+            op == 12
+            or opcode[-1] > 255
+            or self.operandEncoding[opcode[0]] is not read_operator
+            or op in self.operators
+        ):
+            return None
+        return opcode
 
     def needsDecompilation(self):
         return self.bytecode is not None
@@ -1252,6 +1276,16 @@ class T2CharString(object):
             index = index + 1
             handler = self.operandEncoding[b0]
             token, index = handler(self, b0, self.bytecode, index)
+            if token is None:
+                # read_operator returns None for an undefined operator. Keep it
+                # as a named token, so that it is ignored (and the stack
+                # cleared) like any operator without a handler, as the CFF2
+                # specification requires, and compiles back to the same bytes.
+                # Returning None would end the charstring here.
+                if b0 == 12:
+                    token = "unknown_12_%d" % byteord(self.bytecode[index - 1])
+                else:
+                    token = "unknown_%d" % b0
         else:
             if index >= len(self.program):
                 return None, 0, 0
