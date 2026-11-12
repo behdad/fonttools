@@ -487,6 +487,43 @@ def test_arc_to_cubic_bezier():
             assert pt1 == pytest.approx(pt2, rel=1e-5)
 
 
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        (
+            "M0 0 A 0 5 0 0 1 10 10 L 20 20",
+            [
+                ("moveTo", ((0.0, 0.0),)),
+                ("lineTo", ((10.0, 10.0),)),
+                ("lineTo", ((20.0, 20.0),)),
+                ("endPath", ()),
+            ],
+        ),
+        (
+            "M0 0 a 5 0 0 0 1 10 10",
+            [
+                ("moveTo", ((0.0, 0.0),)),
+                ("lineTo", ((10.0, 10.0),)),
+                ("endPath", ()),
+            ],
+        ),
+        (
+            # identical endpoints: the arc is omitted
+            "M0 0 A 0 5 0 0 1 0 0 L 20 20",
+            [
+                ("moveTo", ((0.0, 0.0),)),
+                ("lineTo", ((20.0, 20.0),)),
+                ("endPath", ()),
+            ],
+        ),
+    ],
+)
+def test_arc_zero_radius_is_line(path, expected):
+    pen = RecordingPen()
+    parse_path(path, pen)
+    assert pen.value == expected
+
+
 class ArcRecordingPen(RecordingPen):
     def arcTo(self, rx, ry, rotation, arc_large, arc_sweep, end_point):
         self.value.append(

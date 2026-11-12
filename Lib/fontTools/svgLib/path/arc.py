@@ -145,6 +145,13 @@ class EllipticalArc(object):
             yield point1, point2, target_point
 
     def draw(self, pen):
+        # If rx = 0 or ry = 0, the arc is treated as a straight line segment joining
+        # the endpoints (unless they are identical, then the arc is omitted).
+        # https://www.w3.org/TR/SVG/implnote.html#ArcOutOfRangeParameters
+        if not (self.rx and self.ry):
+            if self.target_point != self.current_point:
+                pen.lineTo((self.target_point.real, self.target_point.imag))
+            return
         for point1, point2, target_point in self._decompose_to_cubic_curves():
             pen.curveTo(
                 (point1.real, point1.imag),
