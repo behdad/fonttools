@@ -314,8 +314,22 @@ def reorderGlyphs(font: ttLib.TTFont, new_glyph_order: List[str]):
     for tag in ["CFF ", "CFF2"]:
         if tag in font:
             cff_table = font[tag]
-            charstrings = cff_table.cff.topDictIndex[0].CharStrings.charStrings
-            cff_table.cff.topDictIndex[0].charset = new_glyph_order
-            cff_table.cff.topDictIndex[0].CharStrings.charStrings = {
+            top_dict = cff_table.cff.topDictIndex[0]
+            cs = top_dict.CharStrings
+            charstrings = cs.charStrings
+            if hasattr(top_dict, "FDSelect") and len(top_dict.FDSelect):
+                fd_select = top_dict.FDSelect
+                glyph_to_fd = dict(zip(old_glyph_order, fd_select.gidArray))
+                if cs.charStringsAreIndexed:
+                    # Load private dicts with the original FDSelect, then put
+                    # the INDEX and its name-to-index mapping in the new order.
+                    names = [g for g in new_glyph_order if g in charstrings]
+                    cs.charStringsIndex.items = [cs[g] for g in names]
+                    charstrings = {g: i for i, g in enumerate(names)}
+                fd_select.gidArray = [
+                    glyph_to_fd[g] for g in new_glyph_order if g in glyph_to_fd
+                ]
+            top_dict.charset = new_glyph_order
+            top_dict.CharStrings.charStrings = {
                 k: charstrings.get(k) for k in new_glyph_order
             }
