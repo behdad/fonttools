@@ -302,3 +302,37 @@ def test_reorder_lazy_arrays(lazy, pairpos):
     else:
         assert subtable.Coverage.glyphs == list(reversed(order[1:]))
         assert [v.XAdvance for v in subtable.Value] == list(reversed(range(1, 11)))
+
+
+def test_reorder_glyphs_cff2():
+    # CFF2 has no charset: the charstrings must be read before the glyph order
+    # changes, or each glyph gets the outline of the old glyph at its position.
+    def outlines(font):
+        glyph_set = font.getGlyphSet()
+        result = {}
+        for name in font.getGlyphOrder():
+            pen = RecordingPen()
+            glyph_set[name].draw(pen)
+            result[name] = pen.value
+        return result
+
+    font = TTFont()
+    font.importXML(
+        Path(__file__).parent.parent / "cffLib" / "data" / "TestSparseCFF2VF.ttx"
+    )
+    buf = BytesIO()
+    font.save(buf)
+    buf.seek(0)
+    font = TTFont(buf)
+    expected = outlines(TTFont(BytesIO(buf.getvalue())))
+
+    ga = font.getGlyphOrder()
+    ga = [ga[0]] + list(reversed(ga[1:]))
+    reorderGlyphs(font, ga)
+
+    assert font.getGlyphOrder() == ga
+    assert outlines(font) == expected
+    buf = BytesIO()
+    font.save(buf)
+    buf.seek(0)
+    assert outlines(TTFont(buf)) == expected
