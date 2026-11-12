@@ -2,9 +2,14 @@ import pytest
 
 from io import BytesIO
 from pathlib import Path
+from fontTools import subset
+from fontTools.cffLib import FDSelect, SubrsIndex
+from fontTools.cffLib.CFF2ToCFF import convertCFF2ToCFF
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
+from fontTools.misc.psCharStrings import T2CharString
 from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.recordingPen import RecordingPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.reorderGlyphs import reorderGlyphs
@@ -102,6 +107,107 @@ def test_reorder_glyphs_cff():
 
     assert list(font["CFF "].cff.topDictIndex[0].CharStrings.charStrings.keys()) == ga
     assert font["CFF "].cff.topDictIndex[0].charset == ga
+
+
+@pytest.mark.parametrize("cff2", [False, True])
+@pytest.mark.parametrize("source", ["binary", "xml", "compiled_xml"])
+def test_reorder_glyphs_fdselect(cff2, source):
+    order = [".notdef", "a", "b"]
+    fb = FontBuilder(1000, isTTF=False)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({0x61: "a", 0x62: "b"})
+    fb.setupHorizontalMetrics({name: (500, 0) for name in order})
+    fb.setupHorizontalHeader()
+    fb.setupPost()
+    fb.setupCFF2(
+        {
+            name: T2CharString(program=[0, 0, "rmoveto", -107, "callsubr"])
+            for name in order
+        },
+        fdArrayList=[{}, {}],
+    )
+    top = fb.font["CFF2"].cff[0]
+    top.FDSelect = FDSelect(format=3)
+    top.CharStrings.fdSelect = top.FDSelect
+    for i, fd in enumerate(top.FDArray):
+        private = fd.Private
+        private.Subrs = SubrsIndex()
+        private.Subrs.append(
+            T2CharString(
+                program=[100 * (i + 1), 0, "rlineto"],
+                private=private,
+                globalSubrs=top.GlobalSubrs,
+            )
+        )
+    for name, selector in zip(order, [0, 0, 1]):
+        charstring = top.CharStrings[name]
+        charstring.fdSelectIndex = selector
+        charstring.private = top.FDArray[selector].Private
+
+    data = BytesIO()
+    fb.font.save(data)
+    font = TTFont(BytesIO(data.getvalue()), recalcBBoxes=False)
+    if not cff2:
+        convertCFF2ToCFF(font)
+        data = BytesIO()
+        font.save(data)
+        font = TTFont(BytesIO(data.getvalue()))
+    tag = "CFF2" if cff2 else "CFF "
+
+    def outlines(font):
+        glyph_set = font.getGlyphSet()
+        result = {}
+        for name in font.getGlyphOrder():
+            pen = RecordingPen()
+            glyph_set[name].draw(pen)
+            result[name] = pen.value
+        return result
+
+    expected = outlines(font)
+    data = BytesIO()
+    font.save(data)
+    font = TTFont(BytesIO(data.getvalue()))
+    if source != "binary":
+        xml = BytesIO()
+        font.saveXML(xml)
+        font = TTFont()
+        font.importXML(BytesIO(xml.getvalue()))
+        if source == "compiled_xml":
+            font.save(BytesIO())
+
+    # Load only the name-to-index mapping, leaving the individual charstrings
+    # lazy. This isolates FDSelect reordering from the CFF2 naming bug in #4411.
+    font[tag].cff[0].CharStrings
+    order = font.getGlyphOrder()
+    new_order = order[:1] + list(reversed(order[1:]))
+    for glyph_order in [new_order, order, new_order]:
+        reorderGlyphs(font, glyph_order)
+        top = font[tag].cff[0]
+        assert {
+            name: top.CharStrings.getItemAndSelector(name)[1] for name in order
+        } == dict(zip(order, [0, 0, 1]))
+        assert outlines(font) == expected
+        data = BytesIO()
+        font.save(data)
+        reopened = TTFont(BytesIO(data.getvalue()))
+        assert outlines(reopened) == expected
+        top = reopened[tag].cff[0]
+        assert {
+            name: top.CharStrings.getItemAndSelector(name)[1] for name in order
+        } == dict(zip(order, [0, 0, 1]))
+
+    if source == "binary":
+        # Subsequent edits must see the same order in the INDEX and FDSelect.
+        options = subset.Options()
+        options.notdef_outline = True
+        subsetter = subset.Subsetter(options=options)
+        subsetter.populate(glyphs=order[-1:])
+        subsetter.subset(font)
+        expected = {name: expected[name] for name in font.getGlyphOrder()}
+        assert outlines(font) == expected
+        data = BytesIO()
+        font.save(data)
+        assert outlines(TTFont(BytesIO(data.getvalue()))) == expected
 
 
 def test_reorder_glyphs_math_null_coverage():
