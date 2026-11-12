@@ -217,3 +217,23 @@ def test_unbuild_escapes_axis_name_in_designspace():
     axes = root.findall(".//axis")
     assert len(axes) == 1
     assert axes[0].get("name") == hostile
+
+
+def test_avarPlanner_main_returns_plan_exit_code(tmp_path):
+    import subprocess
+    import sys
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.varLib.avarPlanner import main as avarPlanner_main
+
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder([".notdef"])
+    fontfile = str(tmp_path / "Static.ttf")
+    fb.font.save(fontfile)
+
+    # "Not a variable font."
+    assert avarPlanner_main([fontfile]) == 1
+
+    result = subprocess.run(
+        [sys.executable, "-m", "fontTools", "varLib.avarPlanner", fontfile]
+    )
+    assert result.returncode == 1
