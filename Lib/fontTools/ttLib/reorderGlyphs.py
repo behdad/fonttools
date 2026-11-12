@@ -300,6 +300,15 @@ def reorderGlyphs(font: ttLib.TTFont, new_glyph_order: List[str]):
     if not_loaded:
         raise ValueError(f"Everything should be loaded, following aren't: {not_loaded}")
 
+    # Read the charstrings before changing the glyph order: CFF2 has no charset,
+    # and takes the names of its charstrings from the font's glyph order when
+    # they are first read.
+    cff_charstrings = {
+        tag: font[tag].cff.topDictIndex[0].CharStrings.charStrings
+        for tag in ["CFF ", "CFF2"]
+        if tag in font
+    }
+
     font.setGlyphOrder(new_glyph_order)
 
     coverage_containers = {"GDEF", "GPOS", "GSUB", "MATH"}
@@ -311,25 +320,22 @@ def reorderGlyphs(font: ttLib.TTFont, new_glyph_order: List[str]):
                 for reorder in _REORDER_RULES.get(reorder_key, []):
                     reorder.apply(font, value)
 
-    for tag in ["CFF ", "CFF2"]:
-        if tag in font:
-            cff_table = font[tag]
-            top_dict = cff_table.cff.topDictIndex[0]
-            cs = top_dict.CharStrings
-            charstrings = cs.charStrings
-            if hasattr(top_dict, "FDSelect") and len(top_dict.FDSelect):
-                fd_select = top_dict.FDSelect
-                glyph_to_fd = dict(zip(old_glyph_order, fd_select.gidArray))
-                if cs.charStringsAreIndexed:
-                    # Load private dicts with the original FDSelect, then put
-                    # the INDEX and its name-to-index mapping in the new order.
-                    names = [g for g in new_glyph_order if g in charstrings]
-                    cs.charStringsIndex.items = [cs[g] for g in names]
-                    charstrings = {g: i for i, g in enumerate(names)}
-                fd_select.gidArray = [
-                    glyph_to_fd[g] for g in new_glyph_order if g in glyph_to_fd
-                ]
-            top_dict.charset = new_glyph_order
-            top_dict.CharStrings.charStrings = {
-                k: charstrings.get(k) for k in new_glyph_order
-            }
+    for tag, charstrings in cff_charstrings.items():
+        top_dict = font[tag].cff.topDictIndex[0]
+        cs = top_dict.CharStrings
+        if hasattr(top_dict, "FDSelect") and len(top_dict.FDSelect):
+            fd_select = top_dict.FDSelect
+            glyph_to_fd = dict(zip(old_glyph_order, fd_select.gidArray))
+            if cs.charStringsAreIndexed:
+                # Load private dicts with the original FDSelect, then put
+                # the INDEX and its name-to-index mapping in the new order.
+                names = [g for g in new_glyph_order if g in charstrings]
+                cs.charStringsIndex.items = [cs[g] for g in names]
+                charstrings = {g: i for i, g in enumerate(names)}
+            fd_select.gidArray = [
+                glyph_to_fd[g] for g in new_glyph_order if g in glyph_to_fd
+            ]
+        top_dict.charset = new_glyph_order
+        top_dict.CharStrings.charStrings = {
+            k: charstrings.get(k) for k in new_glyph_order
+        }
