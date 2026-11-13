@@ -2247,6 +2247,18 @@ class ParserTest(unittest.TestCase):
             "<device NULL> <device 11 128>> foo;",
         )
 
+    def test_valuerecord_value_out_of_range(self):
+        for fea in (
+            "feature kern { pos A B 99999; } kern;",
+            "valueRecordDef <1 2 -40000 4> foo;",
+        ):
+            self.assertRaisesRegex(
+                FeatureLibError,
+                r"Value out of valid range \(-32768..32767\)",
+                self.parse,
+                fea,
+            )
+
     def test_conditionset(self):
         doc = self.parse("conditionset heavy { wght 700 900; } heavy;")
         value = doc.statements[0]

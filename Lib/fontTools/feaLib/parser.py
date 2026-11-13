@@ -1775,6 +1775,7 @@ class Parser(object):
                 self.expect_number_(variable=True),
                 self.cur_token_location_,
             )
+            self.check_value_range_([number], location)
             if vertical:
                 val = self.ast.ValueRecord(
                     yAdvance=number, vertical=vertical, location=location
@@ -1805,6 +1806,9 @@ class Parser(object):
                 self.expect_number_(variable=True),
                 self.expect_number_(variable=True),
                 self.expect_number_(variable=True),
+            )
+            self.check_value_range_(
+                [xPlacement, yPlacement, xAdvance, yAdvance], location
             )
 
         if self.next_token_ == "<":
@@ -1844,6 +1848,15 @@ class Parser(object):
             vertical=vertical,
             location=location,
         )
+
+    @staticmethod
+    def check_value_range_(values, location):
+        # Value record fields are int16; variable scalars are checked when built.
+        for value in values:
+            if isinstance(value, int) and not -0x8000 <= value <= 0x7FFF:
+                raise FeatureLibError(
+                    "Value out of valid range (-32768..32767)", location
+                )
 
     def parse_valuerecord_definition_(self, vertical):
         # Parses a named value record definition. (See section `2.e.v <https://adobe-type-tools.github.io/afdko/OpenTypeFeatureFileSpecification.html#2.e.v>`_)
