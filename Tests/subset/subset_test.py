@@ -15,6 +15,7 @@ from fontTools.ttLib.tables.TupleVariation import TupleVariation
 from fontTools.misc.loggingTools import CapturingLogHandler
 from fontTools.subset.svg import etree
 import difflib
+import itertools
 import logging
 import os
 import shutil
@@ -280,6 +281,34 @@ class SubsetTest:
         subsetfont = TTFont(subsetpath)
         self.expect_ttx(subsetfont, self.getpath("expect_bsln_3.ttx"), ["bsln"])
 
+    @pytest.mark.parametrize(
+        "ttx, glyphs",
+        [
+            # Format 1: .notdef uses the Roman baseline (0), space the
+            # ideographic default (1).
+            ("TestBSLN-1.ttx", [".notdef", "space"]),
+            # Format 3: .notdef and P use 0, space and uni2EA2 use 1.
+            ("TestBSLN-3.ttx", [".notdef", "space", "P", "uni2EA2"]),
+        ],
+    )
+    def test_subset_bsln_default_tie(self, ttx, glyphs):
+        # When several baselines are equally common, the new default must not
+        # depend on the order of the glyph set, which varies between runs
+        # (PYTHONHASHSEED). The baseline of the first glyph in glyph order wins.
+        for order in itertools.permutations(glyphs):
+            font = TTFont()
+            font.importXML(self.getpath(ttx))
+            subsetter = subset.Subsetter()
+            subsetter.glyphs = list(order)
+            subsetter.reverseOrigGlyphMap = {g: font.getGlyphID(g) for g in glyphs}
+
+            assert font["bsln"].subset_glyphs(subsetter)
+            baseline = font["bsln"].table.Baseline
+            assert baseline.DefaultBaseline == 0
+            assert baseline.BaselineValues == {
+                g: 1 for g in glyphs if g in ("space", "uni2EA2")
+            }
+
     def test_subset_BASE(self):
         fontpath = self.compile_font(self.getpath("TestBASE.ttx"), ".ttf")
         subsetpath = self.temp_path(".ttf")
@@ -475,6 +504,25 @@ class SubsetTest:
         )
         subsetfont = TTFont(subsetpath)
         self.expect_ttx(subsetfont, self.getpath("expect_prop_1.ttx"), ["prop"])
+
+    def test_subset_prop_default_tie(self):
+        # .notdef, space and two have three different properties (0, 10, 3).
+        # The new default must not depend on the order of the glyph set, which
+        # varies between runs (PYTHONHASHSEED). The value of the first glyph in
+        # glyph order wins.
+        glyphs = [".notdef", "space", "two"]
+        for order in itertools.permutations(glyphs):
+            font = TTFont()
+            font.importXML(self.getpath("TestPROP.ttx"))
+            subsetter = subset.Subsetter()
+            subsetter.glyphs = list(order)
+            subsetter.reverseOrigGlyphMap = {g: font.getGlyphID(g) for g in glyphs}
+
+            assert font["prop"].subset_glyphs(subsetter)
+            prop = font["prop"].table.GlyphProperties
+            assert prop.Format == 1
+            assert prop.DefaultProperties == 0
+            assert prop.Properties == {"space": 10, "two": 3}
 
     def test_options(self):
         # https://github.com/fonttools/fonttools/issues/413
