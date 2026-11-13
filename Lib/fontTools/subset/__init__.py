@@ -4046,7 +4046,9 @@ class Subsetter(object):
                     new_avg_width = font[tag].recalcAvgCharWidth(font)
                     if old_avg_width != new_avg_width:
                         log.info("%s xAvgCharWidth updated: %d", tag, new_avg_width)
-                if self.options.recalc_max_context:
+                if self.options.recalc_max_context and font[tag].version >= 2:
+                    # usMaxContext was added with OS/2 format 2
+                    # https://learn.microsoft.com/en-us/typography/opentype/spec/os2#version-2
                     max_context = maxCtxFont(font)
                     if max_context != font[tag].usMaxContext:
                         font[tag].usMaxContext = max_context
