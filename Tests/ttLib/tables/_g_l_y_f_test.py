@@ -1271,6 +1271,39 @@ def test_zero_contour_instructions(length, remove_hinting, expanded):
         assert glyph.compile(None) == data
 
 
+def test_decompile_truncated_flags_data():
+    # numberOfContours=1, endPts=[4] -> 5 coordinates, no instructions, but the
+    # flag data ends after a single byte: the flag walk must raise TTLibError,
+    # not IndexError.
+    header = struct.pack(">hhhhh", 1, 0, 0, 0, 0)
+    data = header + struct.pack(">H", 4) + struct.pack(">H", 0) + b"\x01"
+    glyph = Glyph(data)
+    with pytest.raises(TTLibError, match="Not enough data to decompile glyph flags"):
+        glyph.expand(None)
+
+
+def test_decompile_repeat_overruns_flag_count():
+    # nCoordinates=2 but the single flag repeats 3 times; the overrun must
+    # raise TTLibError, not IndexError.
+    header = struct.pack(">hhhhh", 1, 0, 0, 0, 0)
+    data = header + struct.pack(">H", 1) + struct.pack(">H", 0) + b"\x09\x02"
+    glyph = Glyph(data)
+    with pytest.raises(TTLibError, match="Too many glyph flags"):
+        glyph.expand(None)
+
+
+def test_decompile_truncated_coordinates_data():
+    # Two flags, each requiring an int16 x/y coordinate, but no coordinate
+    # bytes follow: must raise TTLibError, not struct.error.
+    header = struct.pack(">hhhhh", 1, 0, 0, 0, 0)
+    data = header + struct.pack(">H", 1) + struct.pack(">H", 0) + b"\x01\x01"
+    glyph = Glyph(data)
+    with pytest.raises(
+        TTLibError, match="Not enough data to decompile glyph coordinates"
+    ):
+        glyph.expand(None)
+
+
 @pytest.mark.parametrize("data", [b"", b"\x00" * 10, b"\x00" * 11])
 @pytest.mark.parametrize("remove_hinting", [False, True])
 def test_trim_zero_contour_without_instructions(data, remove_hinting):

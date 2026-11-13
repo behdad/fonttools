@@ -1,4 +1,5 @@
 from fontTools.misc.textTools import safeEval
+from fontTools.ttLib import TTLibError
 from . import DefaultTable
 import struct
 
@@ -18,15 +19,21 @@ class table__g_a_s_p(DefaultTable.DefaultTable):
     """
 
     def decompile(self, data, ttFont):
+        if len(data) < 4:
+            raise TTLibError("Not enough 'gasp' table data")
         self.version, numRanges = struct.unpack(">HH", data[:4])
-        assert 0 <= self.version <= 1, "unknown 'gasp' format: %s" % self.version
+        if not 0 <= self.version <= 1:
+            raise TTLibError("unknown 'gasp' format: %d" % self.version)
         data = data[4:]
         self.gaspRange = {}
         for i in range(numRanges):
+            if len(data) < 4:
+                raise TTLibError("Not enough 'gasp' table data")
             rangeMaxPPEM, rangeGaspBehavior = struct.unpack(">HH", data[:4])
             self.gaspRange[int(rangeMaxPPEM)] = int(rangeGaspBehavior)
             data = data[4:]
-        assert not data, "too much data"
+        if data:
+            raise TTLibError("too much 'gasp' table data")
 
     def compile(self, ttFont):
         version = 0  # ignore self.version

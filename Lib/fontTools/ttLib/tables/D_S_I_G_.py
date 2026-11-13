@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from fontTools.misc import sstruct
 from fontTools.misc.textTools import bytesjoin, safeEval, strjoin, tobytes, tostr
+from fontTools.ttLib import TTLibError
 
 from . import DefaultTable
 
@@ -57,28 +58,41 @@ class table_D_S_I_G_(DefaultTable.DefaultTable):
 
     def decompile(self, data: bytes, ttFont: TTFont) -> None:
         dummy, newData = sstruct.unpack2(DSIG_HeaderFormat, data, self)
-        assert self.ulVersion == 1, "DSIG ulVersion must be 1"
-        assert self.usFlag & ~1 == 0, "DSIG usFlag must be 0x1 or 0x0"
+        if self.ulVersion != 1:
+            raise TTLibError("invalid DSIG ulVersion: %d, expected 1" % self.ulVersion)
+        if self.usFlag & ~1:
+            raise TTLibError("invalid DSIG usFlag: 0x%04x" % self.usFlag)
         self.signatureRecords: list[SignatureRecord] = []
         sigrecs = self.signatureRecords
         for n in range(self.usNumSigs):
             sigrec, newData = sstruct.unpack2(
                 DSIG_SignatureFormat, newData, SignatureRecord()
             )
-            assert sigrec.ulFormat == 1, (
-                "DSIG signature record #%d ulFormat must be 1" % n
-            )
+            if sigrec.ulFormat != 1:
+                raise TTLibError(
+                    "invalid DSIG signature record #%d ulFormat: %d, expected 1"
+                    % (n, sigrec.ulFormat)
+                )
             sigrecs.append(sigrec)
-        for sigrec in sigrecs:
+        for n, sigrec in enumerate(sigrecs):
+            if not 0 <= sigrec.ulOffset <= len(data):
+                raise TTLibError(
+                    "invalid DSIG signature record #%d ulOffset: %d, table length is %d"
+                    % (n, sigrec.ulOffset, len(data))
+                )
             dummy, newData = sstruct.unpack2(
                 DSIG_SignatureBlockFormat, data[sigrec.ulOffset :], sigrec
             )
-            assert sigrec.usReserved1 == 0, (
-                "DSIG signature record #%d usReserverd1 must be 0" % n
-            )
-            assert sigrec.usReserved2 == 0, (
-                "DSIG signature record #%d usReserverd2 must be 0" % n
-            )
+            if sigrec.usReserved1:
+                raise TTLibError(
+                    "invalid DSIG signature record #%d usReserved1: %d, expected 0"
+                    % (n, sigrec.usReserved1)
+                )
+            if sigrec.usReserved2:
+                raise TTLibError(
+                    "invalid DSIG signature record #%d usReserved2: %d, expected 0"
+                    % (n, sigrec.usReserved2)
+                )
             sigrec.pkcs7 = newData[: sigrec.cbSignature]
 
     def compile(self, ttFont: TTFont) -> bytes:
