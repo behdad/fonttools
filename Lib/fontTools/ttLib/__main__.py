@@ -112,24 +112,27 @@ def main(args=None):
                 fontNumber=fontNumber,
                 lazy=lazy,
             )
-            if optimizeFontSpeed:
-                font.cfg[OPTIMIZE_FONT_SPEED] = optimizeFontSpeed
             fonts.append(font)
         except TTLibFileIsCollectionError:
             collection = TTCollection(f, lazy=lazy)
             fonts.extend(collection.fonts)
 
-    if tables is None:
-        if lazy is False:
-            tables = ["*"]
-        elif optimizeFontSpeed:
-            tables = {"glyf", "GLYF", "gvar", "GVAR", "VARC"}.intersection(font.keys())
-        else:
-            tables = []
     for font in fonts:
-        if "GlyphOrder" in tables:
+        if optimizeFontSpeed:
+            font.cfg[OPTIMIZE_FONT_SPEED] = optimizeFontSpeed
+        fontTables = tables
+        if fontTables is None:
+            if lazy is False:
+                fontTables = ["*"]
+            elif optimizeFontSpeed:
+                fontTables = {"glyf", "GLYF", "gvar", "GVAR", "VARC"}.intersection(
+                    font.keys()
+                )
+            else:
+                fontTables = []
+        if "GlyphOrder" in fontTables:
             font.getGlyphOrder()
-        for table in tables if "*" not in tables else font.keys():
+        for table in fontTables if "*" not in fontTables else font.keys():
             font[table]  # Decompiles
 
     if outFile is not None:

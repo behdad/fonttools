@@ -3,7 +3,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from fontTools.ttLib import __main__, TTFont, TTCollection
+from fontTools.ttLib import __main__, OPTIMIZE_FONT_SPEED, TTFont, TTCollection
 from fontTools.ttLib.beyond64k import upper_tables
 
 import pytest
@@ -105,6 +105,32 @@ def test_ttLib_open_ttcollection_save_ttcollection(tmp_path, ttcollection_path):
 
     assert output_path.exists()
     assert len(TTCollection(output_path)) == len(TTCollection(ttcollection_path))
+
+
+def test_ttLib_open_save_ttcollection_optimize_font_speed(
+    tmp_path, ttcollection_path, monkeypatch
+):
+    saved = []
+    save = TTCollection.save
+
+    def spySave(self, *args, **kwargs):
+        saved.extend(
+            (font.cfg[OPTIMIZE_FONT_SPEED], font.isLoaded("glyf"))
+            for font in self.fonts
+        )
+        return save(self, *args, **kwargs)
+
+    monkeypatch.setattr(TTCollection, "save", spySave)
+    output_path = tmp_path / "TestTTF.ttc"
+
+    __main__.main(
+        ["--optimize-font-speed", "-o", str(output_path), str(ttcollection_path)]
+    )
+
+    assert saved == [(True, True), (True, True)]
+    coll = TTCollection(output_path)
+    assert len(coll) == 2
+    assert coll[0].getGlyphOrder() == TTCollection(ttcollection_path)[0].getGlyphOrder()
 
 
 def test_ttLib_open_multiple_fonts_save_ttcollection(tmp_path, ttfont_path):
