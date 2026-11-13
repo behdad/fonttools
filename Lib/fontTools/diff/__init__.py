@@ -357,18 +357,27 @@ def run(argv: List[Text]):
             return 2
 
     if args.binary:
-        excluded_binary_tables = get_binary_exclude_tables(
-            args.FILE1,
-            args.FILE2,
-            include_tables=include_list,
-            exclude_tables=exclude_list,
-            font_number_1=args.y1,
-            font_number_2=args.y2,
-        )
+        try:
+            excluded_binary_tables = get_binary_exclude_tables(
+                args.FILE1,
+                args.FILE2,
+                include_tables=include_list,
+                exclude_tables=exclude_list,
+                font_number_1=args.y1,
+                font_number_2=args.y2,
+            )
+        except Exception as e:
+            if not args.quiet:
+                sys.stderr.write(f"[*] ERROR: {e}{os.linesep}")
+            return 2
         if include_list is not None:
             include_list = [
                 tag for tag in include_list if tag not in excluded_binary_tables
             ]
+            if not include_list:
+                # All the included tables are binary identical. Don't pass
+                # an empty list on, as that would mean all the tables.
+                return 0
         else:
             if exclude_list is None:
                 exclude_list = []
@@ -376,7 +385,7 @@ def run(argv: List[Text]):
 
     diff_tool = args.diff
     color_output = args.color == "always" or (
-        args.color == "auto" and sys.stdout.isatty
+        args.color == "auto" and sys.stdout.isatty()
     )
 
     if diff_tool is None:
