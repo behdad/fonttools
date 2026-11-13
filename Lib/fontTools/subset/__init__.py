@@ -133,8 +133,6 @@ Examples::
 
     $ fonttools subset --glyph-names?
     Current setting for 'glyph-names' is: False
-    $ fonttools subset --name-IDs=?
-    Current setting for 'name-IDs' is: [0, 1, 2, 3, 4, 5, 6]
     $ fonttools subset --hinting? --no-hinting --hinting?
     Current setting for 'hinting' is: True
     Current setting for 'hinting' is: False
@@ -348,17 +346,19 @@ codes, see: http://www.microsoft.com/typography/otspec/name.htm
 
 --name-IDs[+|-]=<nameID>[,<nameID>...]
   Specify (=), add to (+=) or exclude from (-=) the set of 'name' table
-  entry nameIDs that will be preserved. By default, only nameIDs between 0
-  and 6 are preserved, the rest are dropped. Use '*' to keep all entries.
+  entry nameIDs that will be preserved. By default, all standard nameIDs
+  (0-255) are preserved; use '*' to select all standard IDs. nameIDs >=256
+  that are referenced elsewhere in the font are also preserved and cannot be
+  dropped with this option.
 
   Examples:
 
   --name-IDs+=7,8,9
       * Also keep Trademark, Manufacturer and Designer name entries.
   --name-IDs=
-      * Drop all 'name' table entries.
+      * Drop all unreferenced 'name' table entries.
   --name-IDs=*
-      * keep all 'name' table entries
+      * Keep all standard nameID entries (0-255).
 
 --name-legacy
   Keep legacy (non-Unicode) 'name' table entries (0.x, 1.x etc.).
@@ -3628,15 +3628,7 @@ class Options(object):
         self.glyph_names = False
         self.legacy_cmap = False
         self.symbol_cmap = False
-        self.name_IDs = [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-        ]  # https://github.com/fonttools/fonttools/issues/1170#issuecomment-364631225
+        self.name_IDs = list(range(256))
         self.name_legacy = False
         self.name_languages = [0x0409]  # English
         self.obfuscate_names = False  # to make webfont unusable as a system font
