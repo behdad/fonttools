@@ -635,6 +635,11 @@ class Parser(object):
         carets = [self.expect_number_()]
         while self.next_token_ != ";":
             carets.append(self.expect_number_())
+        if any(not 0 <= caret <= 0xFFFF for caret in carets):
+            raise FeatureLibError(
+                "Caret contour point out of valid range (0..65535)",
+                self.cur_token_location_,
+            )
         self.expect_symbol_(";")
         return self.ast.LigatureCaretByIndexStatement(glyphs, carets, location=location)
 
@@ -645,6 +650,12 @@ class Parser(object):
         carets = [self.expect_number_(variable=True)]
         while self.next_token_ != ";":
             carets.append(self.expect_number_(variable=True))
+        # Variable scalars are checked when built.
+        if any(isinstance(c, int) and not -0x8000 <= c <= 0x7FFF for c in carets):
+            raise FeatureLibError(
+                "Caret position out of valid range (-32768..32767)",
+                self.cur_token_location_,
+            )
         self.expect_symbol_(";")
         return self.ast.LigatureCaretByPosStatement(glyphs, carets, location=location)
 

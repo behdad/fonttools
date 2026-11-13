@@ -790,6 +790,22 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(glyphstr([s.glyphs]), "f_i")
         self.assertEqual(s.carets, [400, 380])
 
+    def test_ligatureCaretByPos_out_of_range(self):
+        self.assertRaisesRegex(
+            FeatureLibError,
+            r"Caret position out of valid range \(-32768..32767\)",
+            self.parse,
+            "table GDEF {LigatureCaretByPos f_i 400 99999;} GDEF;",
+        )
+
+    def test_ligatureCaretByIndex_out_of_range(self):
+        self.assertRaisesRegex(
+            FeatureLibError,
+            r"Caret contour point out of valid range \(0..65535\)",
+            self.parse,
+            "table GDEF {LigatureCaretByIndex f_i -1;} GDEF;",
+        )
+
     def test_ligatureCaretByPos_variable_scalar(self):
         doc = self.parse(
             "table GDEF {LigatureCaretByPos f_i (wght=200:400 wght=900:1000) 380;} GDEF;"
