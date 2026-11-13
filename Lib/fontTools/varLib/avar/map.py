@@ -118,8 +118,9 @@ def main(args=None):
         "--pin",
         action="append",
         default=[],
-        metavar="AXIS=value",
-        help="Fix an input axis in pre-fvar units when reversing; repeat for more axes.",
+        metavar="AXIS[=value]",
+        help="Fix an input axis in pre-fvar units when reversing; omit the value "
+        "to pin at default. Repeat for more axes.",
     )
 
     options = parser.parse_args(args)
@@ -137,10 +138,13 @@ def main(args=None):
         if "fvar" not in font:
             parser.error(f"Font '{options.font}' does not contain an 'fvar' table.")
 
-    def parse_coordinates(items):
+    def parse_coordinates(items, allow_default=False):
         location = {}
         for item in items:
             tag, sep, value = item.partition("=")
+            if allow_default and tag and not sep:
+                location[tag] = None
+                continue
             if not sep or not tag or not value:
                 parser.error(
                     f"Invalid coordinate {item!r}. Expected AXIS=value, e.g. wght=500"
@@ -163,7 +167,11 @@ def main(args=None):
             outputNormalized=options.o,
             dropZeroes=not options.f,
             reverse=options.reverse,
-            pinned=parse_coordinates(options.pin) if options.pin else None,
+            pinned=(
+                parse_coordinates(options.pin, allow_default=True)
+                if options.pin
+                else None
+            ),
         )
     except (ValueError, ImportError) as e:
         parser.error(str(e))

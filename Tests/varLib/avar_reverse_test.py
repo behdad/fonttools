@@ -109,6 +109,17 @@ def test_pins_use_pre_fvar_units_with_normalized_flags():
     assert result == {"aaaa": 525, "bbbb": 400}
 
 
+def test_pin_none_means_default_including_hidden_axes():
+    font = make_font(hidden=("cccc",))
+    result = reverse(
+        font,
+        {"bbbb": 0.5},
+        inputNormalized=True,
+        pinned={"aaaa": None, "cccc": None},
+    )
+    assert result == pytest.approx({"aaaa": 400, "bbbb": 650, "cccc": 400})
+
+
 def test_nearest_unreachable_target(caplog):
     # With the hidden input fixed, outputs lie on (x, x). The projection of
     # (1, 0) onto this line is (1/2, 1/2), not (1, 0) or the default.
@@ -273,11 +284,12 @@ def test_scipy_is_optional_for_forward_mapping(monkeypatch):
         reverse(font, {"aaaa": 0.5}, inputNormalized=True)
 
 
-def test_cli_reverse_and_pins(tmp_path, capsys):
+@pytest.mark.parametrize("pin", ["bbbb=400", "bbbb"])
+def test_cli_reverse_and_pins(tmp_path, capsys, pin):
     font = make_font(("aaaa", "bbbb"))
     path = tmp_path / "test.ttf"
     font.save(path)
-    main(["--reverse", "-i", "--pin", "bbbb=400", str(path), "aaaa=0.3333333333333333"])
+    main(["--reverse", "-i", "--pin", pin, str(path), "aaaa=0.3333333333333333"])
     result = {
         k: float(v)
         for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
@@ -289,3 +301,42 @@ def test_cli_reverse_and_pins(tmp_path, capsys):
 def test_cli_pins_require_reverse():
     with pytest.raises(SystemExit, match="2"):
         main(["--pin", "aaaa=400", "font.ttf", "aaaa=0"])
+
+
+@pytest.mark.parametrize("input_normalized", [False, True])
+@pytest.mark.parametrize("output_normalized", [False, True])
+@pytest.mark.parametrize("drop_zeroes", [False, True])
+def test_cli_reverse_empty_location(
+    tmp_path, capsys, input_normalized, output_normalized, drop_zeroes
+):
+    font = make_font(("aaaa", "bbbb"))
+    add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [0.5]})
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    flags = ["--reverse"]
+    if input_normalized:
+        flags.append("-i")
+    if output_normalized:
+        flags.append("-o")
+    if not drop_zeroes:
+        flags.append("-f")
+    main([*flags, str(path)])
+    result = {
+        tag: float(value)
+        for tag, value in (
+            line.split("=") for line in capsys.readouterr().out.splitlines()
+        )
+    }
+    expected = (
+        {"aaaa": 0, "bbbb": 0} if output_normalized else {"aaaa": 400, "bbbb": 400}
+    )
+    assert result == ({} if drop_zeroes else expected)
+
+
+@pytest.mark.parametrize("pin", ["XXXX", "aaaa=", "aaaa=nan", "aaaa=1000"])
+def test_cli_invalid_pin(tmp_path, pin):
+    font = make_font(("aaaa",))
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    with pytest.raises(SystemExit, match="2"):
+        main(["--reverse", "-i", "--pin", pin, str(path), "aaaa=0"])

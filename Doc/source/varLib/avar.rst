@@ -15,6 +15,11 @@ with a pre-fvar value (independent of ``-i`` and ``-o``)::
 
     fonttools varLib.avar.map --reverse -i --pin opsz=14 Font.ttf wght=0.6
 
+Omit the value to pin an axis at its fvar default. Repeat ``--pin`` to fix more
+axes::
+
+    fonttools varLib.avar.map --reverse -i --pin opsz --pin wdth=100 Font.ttf wght=0.6
+
 Reverse mapping requires the optional ``fonttools[avar]`` dependencies.
 It minimizes normalized output error, then prefers fewer non-default input
 axes among solutions within one F2Dot14 unit of the best error found. A greedy

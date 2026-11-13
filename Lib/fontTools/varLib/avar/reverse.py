@@ -13,7 +13,6 @@ from fontTools.varLib.models import normalizeValue, piecewiseLinearMap
 from fontTools.varLib.varStore import NO_VARIATION_INDEX
 from .map import _denormalize, map as map_forward
 
-
 log = logging.getLogger(__name__)
 
 
@@ -90,6 +89,9 @@ class _AvarMapping:
         self.deltas = np.zeros((len(self.axes), 0))
         if store is not None:
             indexMap = avar.table.VarIdxMap
+            # Assemble D[output axis, region] in normalized-coordinate units.
+            # Resolving VarIdxMap here also handles axes that share delta rows.
+            # Missing/out-of-range rows contribute zero, as in VarStoreInstancer.
             deltas = np.zeros((len(self.axes), len(store.VarRegionList.Region)))
             for i in range(len(self.axes)):
                 index = indexMap[i] if indexMap is not None else i
@@ -118,6 +120,10 @@ class _AvarMapping:
 
     def __call__(self, x):
         np = self.np
+        # x is normalized BEFORE avar1; z = A(x) is the intermediate location.
+        # Before clipping/rounding, the full map is H(x) = z + D * s(z), where
+        # s contains the products of per-axis tents for each region. Within a
+        # region cell this is multilinear, not generally one affine transform.
         values, slopes = zip(*(_segment(v, s) for v, s in zip(x, self.segments)))
         z = np.array(values)
         jac = np.eye(len(x))
@@ -134,6 +140,8 @@ class _AvarMapping:
             jac += np.outer(deltas, gradient)
             # All regions see the same intermediate coordinates.
             values = np.asarray(values) + deltas * scalar
+        # Chain rule: J_H = (I + D * J_s) * diag(A'). Multiplying columns by
+        # the avar1 slopes differentiates with respect to our input x, not z.
         return np.asarray(values), jac * slopes
 
 
@@ -156,6 +164,7 @@ def reverse(
 
     Hidden axes are held at their fvar defaults. ``pinned`` optionally maps
     other axis tags to fixed PRE-FVAR values, regardless of the unit flags.
+    A pinned value of None means the axis's fvar default.
     Returned coordinates stay within the fvar ranges.
 
     Output error is Euclidean distance in normalized coordinates. Among
@@ -177,6 +186,10 @@ def reverse(
     unknown = sorted((location.keys() | pinned.keys()) - triples.keys())
     if unknown:
         raise ValueError(f"Unknown axis tag(s): {', '.join(unknown)}")
+    pinned = {
+        tag: triples[tag][1] if value is None else value
+        for tag, value in pinned.items()
+    }
     for tag, value in location.items():
         if not math.isfinite(value) or (inputNormalized and not -1 <= value <= 1):
             raise ValueError(f"Invalid target coordinate for {tag}: {value}")
@@ -214,6 +227,10 @@ def reverse(
             for a in axes
         ]
     )
+    # Optimize in normalized input space so weight, optical size, etc. have
+    # comparable scales. A default at an endpoint makes its domain one-sided.
+    # Hidden, pinned, and collapsed axes are eliminated from the optimization;
+    # their OUTPUT coordinates still participate in the residual.
     lower = np.array([-1.0 if a.minValue < a.defaultValue else 0.0 for a in axes])
     upper = np.array([1.0 if a.defaultValue < a.maxValue else 0.0 for a in axes])
     fixed = np.array(
@@ -245,6 +262,12 @@ def reverse(
             candidates[key] = (error, x)
 
     def best():
+        # Output accuracy comes first, up to the requested tolerance. Use the
+        # smallest residual seen across ALL candidates as the error budget's
+        # anchor, so successive axis removals cannot accumulate tolerance loss.
+        # Within that budget prefer fewer non-default inputs, then accuracy,
+        # then proximity to default. This is a preference, not an L0 penalty
+        # added to the residual, which could trade away an otherwise good fit.
         error = min(e for e, _ in candidates.values())
         return min(
             (c for c in candidates.values() if c[0] <= error + tolerance),
@@ -282,6 +305,11 @@ def reverse(
                 cached = (v.copy(), residual, jac)
                 return residual, jac
 
+            # Trust-region least squares repeatedly solves a bounded local
+            # linear problem using this Jacobian, then checks the nonlinear
+            # residual before accepting a step. Rank deficiency is expected:
+            # multiple inputs can produce the same output, especially after
+            # saturation. Avoid explicitly inverting J or forming J.T @ J.
             result = least_squares(
                 lambda v: evaluate(v)[0],
                 x[varying],
@@ -295,6 +323,9 @@ def reverse(
             x[varying] = result.x
             add(x)
 
+    # The default promotes sparse solutions; inverting avar1 alone gives a
+    # better guess when its segment maps depart substantially from identity.
+    # Keep the target-as-input guess too, since avar2 can undo that remapping.
     seeds = [
         fixed.copy(),
         np.array(
@@ -315,6 +346,8 @@ def reverse(
         peaks.append(x)
     peaks.sort(key=lambda x: np.linalg.norm(np.clip(mapping(x)[0], -1, 1) - target))
     seeds.extend(peaks[:8])
+    # A few reproducible random starts explore other basins without enumerating
+    # the exponentially many region cells. This is not a global-optimum proof.
     rng = np.random.default_rng(0)
     seeds.extend(rng.uniform(lower, upper) for _ in range(4))
     seen = set()
@@ -330,6 +363,9 @@ def reverse(
 
     # Try dropping each non-default axis, refitting the others. Accept only
     # candidates within the output-error budget, then repeat after a removal.
+    # Refitting matters: simply zeroing a coordinate misses solutions where
+    # another axis can take over its contribution. Backward elimination is
+    # greedy; finding the sparsest possible subset would be combinatorial.
     while True:
         _, x = best()
         active = [i for i in free if x[i] != 0]
@@ -342,6 +378,9 @@ def reverse(
 
     # Refine against the rounded forward map on a small coordinate stencil.
     # One tick in intermediate space is scaled by the local avar1 slope.
+    # Differentiating the rounded avar2 mapper mostly gives zero derivatives
+    # because of quantization. Instead, use its exact residual only to rank
+    # nearby candidates after the continuous solver has located a good basin.
     for _ in range(3):
         error, x = best()
         if error == 0:
