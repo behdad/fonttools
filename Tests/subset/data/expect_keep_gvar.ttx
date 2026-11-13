@@ -144,6 +144,9 @@
     <namerecord nameID="6" platformID="3" platEncID="1" langID="0x409">
       TestGVAR-Regular
     </namerecord>
+    <namerecord nameID="9" platformID="3" platEncID="1" langID="0x409">
+      Sascha Brawer
+    </namerecord>
     <namerecord nameID="257" platformID="3" platEncID="1" langID="0x409">
       Weight
     </namerecord>
