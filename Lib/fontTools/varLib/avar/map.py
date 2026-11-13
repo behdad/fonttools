@@ -11,6 +11,12 @@ def _denormalize(v, triplet):
 def map(
     font, location, *, inputNormalized=False, outputNormalized=False, dropZeroes=False
 ):
+    """Map a location through avar, using defaults for omitted input axes.
+
+    Omitted axes use their fvar defaults in user coordinates, or zero when
+    inputNormalized is True. dropZeroes omits normalized-zero OUTPUT axes,
+    independently of the input/output units and the avar version.
+    """
     if "fvar" not in font:
         return None
 
@@ -20,13 +26,22 @@ def map(
     if unknownAxes:
         raise ValueError(f"Unknown axis tag(s): {', '.join(unknownAxes)}")
 
-    if not inputNormalized:
-        location = {
-            tag: normalizeValue(value, axes[tag]) for tag, value in location.items()
-        }
+    location = {
+        tag: (
+            location.get(tag, 0)
+            if inputNormalized
+            else normalizeValue(location.get(tag, triple[1]), triple)
+        )
+        for tag, triple in axes.items()
+    }
 
     if "avar" in font:
         location = font["avar"].renormalizeLocation(location, font, dropZeroes)
+
+    # Filter before denormalizing: a normalized zero can become a nonzero
+    # user-space default. avar v1 and fonts without avar need this too.
+    if dropZeroes:
+        location = {tag: value for tag, value in location.items() if value != 0}
 
     if not outputNormalized:
         location = {
@@ -55,9 +70,10 @@ def main(args=None):
     parser.add_argument(
         "coords",
         metavar="[AXIS=value...]",
-        help="Coordinates to map, e.g. 'wght=700 wdth=75'.",
+        help="Coordinates to map, e.g. 'wght=700 wdth=75'. "
+        "Omit coordinates to map the default location.",
         nargs="*",
-        default=None,
+        default=[],
     )
     parser.add_argument(
         "-f", action="store_true", help="Do not omit axes at default location."
@@ -70,11 +86,6 @@ def main(args=None):
     )
 
     options = parser.parse_args(args)
-
-    if not options.coords:
-        parser.error(
-            "No coordinates provided. Please specify at least one axis coordinate (e.g., wght=500)"
-        )
 
     if options.font.endswith(".designspace"):
         from .build import build
