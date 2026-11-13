@@ -1006,10 +1006,14 @@ class Glyph(object):
         yFormat = ">"  # big endian
         j = 0
         while True:
+            if pos >= len(data):
+                raise ttLib.TTLibError("Not enough data to decompile glyph flags")
             flag = data[pos]
             pos += 1
             repeat = 1
             if flag & flagRepeat:
+                if pos >= len(data):
+                    raise ttLib.TTLibError("Not enough data to decompile glyph flags")
                 repeat = data[pos] + 1
                 pos += 1
             for k in range(repeat):
@@ -1021,14 +1025,20 @@ class Glyph(object):
                     yFormat = yFormat + "B"
                 elif not (flag & flagYsame):
                     yFormat = yFormat + "h"
+                if j >= nCoordinates:
+                    raise ttLib.TTLibError(
+                        "Too many glyph flags: %d, expected %d"
+                        % (j, nCoordinates)
+                    )
                 flags[j] = flag
                 j = j + 1
             if j >= nCoordinates:
                 break
-        assert j == nCoordinates, "bad glyph flags"
         # unpack raw coordinates, krrrrrr-tching!
         xDataLen = struct.calcsize(xFormat)
         yDataLen = struct.calcsize(yFormat)
+        if len(data) - pos < xDataLen + yDataLen:
+            raise ttLib.TTLibError("Not enough data to decompile glyph coordinates")
         if len(data) - pos - (xDataLen + yDataLen) >= 4:
             log.warning(
                 "too much glyph data: %d excess bytes",
