@@ -1097,11 +1097,17 @@ class Builder(object):
         else:
             self.seen_non_DFLT_script_ = True
         if (script, language) in self.default_language_systems_:
-            raise FeatureLibError(
-                '"languagesystem %s %s" has already been specified'
-                % (script.strip(), language.strip()),
-                location,
+            # like makeotf, warn and ignore the repeat: it adds nothing
+            log.warning(
+                str(
+                    FeatureLibError(
+                        '"languagesystem %s %s" has already been specified'
+                        % (script.strip(), language.strip()),
+                        location,
+                    )
+                )
             )
+            return
         self.default_language_systems_.add((script, language))
 
     def get_default_language_systems_(self):
