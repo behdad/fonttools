@@ -20,6 +20,7 @@ Supporting modules
 .. toctree::
    :maxdepth: 1
 
+   avar
    builder
    cff
    errors

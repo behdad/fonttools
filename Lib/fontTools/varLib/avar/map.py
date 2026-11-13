@@ -9,14 +9,37 @@ def _denormalize(v, triplet):
 
 
 def map(
-    font, location, *, inputNormalized=False, outputNormalized=False, dropZeroes=False
+    font,
+    location,
+    *,
+    inputNormalized=False,
+    outputNormalized=False,
+    dropZeroes=False,
+    reverse=False,
+    pinned=None,
 ):
-    """Map a location through avar, using defaults for omitted input axes.
+    """Map coordinates through avar, or approximately invert it.
 
     Omitted axes use their fvar defaults in user coordinates, or zero when
     inputNormalized is True. dropZeroes omits normalized-zero OUTPUT axes,
     independently of the input/output units and the avar version.
+
+    With ``reverse=True``, see :func:`fontTools.varLib.avar.reverse.reverse`.
+    ``pinned`` is only supported for reverse mapping.
     """
+    if reverse:
+        from .reverse import reverse as reverse_map
+
+        return reverse_map(
+            font,
+            location,
+            inputNormalized=inputNormalized,
+            outputNormalized=outputNormalized,
+            dropZeroes=dropZeroes,
+            pinned=pinned,
+        )
+    if pinned is not None:
+        raise ValueError("Axis pins require reverse mapping")
     if "fvar" not in font:
         return None
 
@@ -84,8 +107,25 @@ def main(args=None):
     parser.add_argument(
         "-o", action="store_true", help="Output coordinates as normalized (-1..1)."
     )
+    parser.add_argument(
+        "-r",
+        "--reverse",
+        action="store_true",
+        help="Find pre-fvar inputs for post-avar targets (requires scipy). "
+        "Hidden axes stay at default; omitted target axes mean normalized zero.",
+    )
+    parser.add_argument(
+        "--pin",
+        action="append",
+        default=[],
+        metavar="AXIS=value",
+        help="Fix an input axis in pre-fvar units when reversing; repeat for more axes.",
+    )
 
     options = parser.parse_args(args)
+
+    if options.pin and not options.reverse:
+        parser.error("--pin requires --reverse")
 
     if options.font.endswith(".designspace"):
         from .build import build
@@ -97,19 +137,23 @@ def main(args=None):
         if "fvar" not in font:
             parser.error(f"Font '{options.font}' does not contain an 'fvar' table.")
 
-    location = {}
-    for item in options.coords:
-        tag, sep, value = item.partition("=")
-        if not sep or not tag or not value:
-            parser.error(
-                f"Invalid coordinate {item!r}. Expected AXIS=value, e.g. wght=500"
-            )
-        try:
-            location[tag] = float(value)
-        except ValueError:
-            parser.error(
-                f"Invalid coordinate value in {item!r}. Expected a number after '='"
-            )
+    def parse_coordinates(items):
+        location = {}
+        for item in items:
+            tag, sep, value = item.partition("=")
+            if not sep or not tag or not value:
+                parser.error(
+                    f"Invalid coordinate {item!r}. Expected AXIS=value, e.g. wght=500"
+                )
+            try:
+                location[tag] = float(value)
+            except ValueError:
+                parser.error(
+                    f"Invalid coordinate value in {item!r}. Expected a number after '='"
+                )
+        return location
+
+    location = parse_coordinates(options.coords)
 
     try:
         mapped = map(
@@ -118,15 +162,18 @@ def main(args=None):
             inputNormalized=options.i,
             outputNormalized=options.o,
             dropZeroes=not options.f,
+            reverse=options.reverse,
+            pinned=parse_coordinates(options.pin) if options.pin else None,
         )
-    except ValueError as e:
+    except (ValueError, ImportError) as e:
         parser.error(str(e))
     assert mapped is not None
 
     for tag in mapped:
         v = mapped[tag]
         v = int(v) if v == int(v) else v
-        print(f"{tag}={v:g}")
+        # Reverse results need enough digits to survive a forward round trip.
+        print(f"{tag}={v:.17g}" if options.reverse else f"{tag}={v:g}")
 
 
 if __name__ == "__main__":
