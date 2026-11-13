@@ -2825,10 +2825,11 @@ def instantiateVariableFont(
             requires the skia-pathops package (available to pip install).
             The overlap parameter only has effect when generating full static instances.
         updateFontNames (bool): if True, update the instantiated font's name table using
-            the Axis Value Tables from the STAT table. The name table and the style bits
-            in the head and OS/2 table will be updated so they conform to the R/I/B/BI
-            model. If the STAT table is missing or an Axis Value table is missing for
-            a given axis coordinate, a ValueError will be raised.
+            the Axis Value Tables from the STAT table, or, if the STAT table has none,
+            the fvar named instance at the new default location. The name table and the
+            style bits in the head and OS/2 table will be updated so they conform to the
+            R/I/B/BI model. If neither source has a match for the axis coordinates, a
+            ValueError will be raised.
         downgradeCFF2 (bool): if True, downgrade the CFF2 table to CFF table when possible
             ie. full instancing of all axes. This is useful for compatibility with older
             software that does not support CFF2. Defaults to False. Note that this
@@ -3179,8 +3180,9 @@ def parseArgs(args):
     parser.add_argument(
         "--update-name-table",
         action="store_true",
-        help="Update the instantiated font's `name` table. Input font must have "
-        "a STAT table with Axis Value Tables",
+        help="Update the instantiated font's `name` table. Uses the STAT table's "
+        "Axis Value Tables when it has matching ones, otherwise the fvar named "
+        "instances",
     )
     parser.add_argument(
         "--downgrade-cff2",

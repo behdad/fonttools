@@ -249,12 +249,82 @@ def test_updateNameTable_missing_axisValues(varfont):
         instancer.names.updateNameTable(varfont, {"wght": 200})
 
 
-def test_updateNameTable_missing_stat(varfont):
+def test_updateNameTable_missing_stat_no_fvar_instance(varfont):
     del varfont["STAT"]
-    with pytest.raises(
-        ValueError, match="Cannot update name table since there is no STAT table."
-    ):
-        instancer.names.updateNameTable(varfont, {"wght": 400})
+    # no fvar instance at wght=450
+    with pytest.raises(ValueError, match="no fvar instance at"):
+        instancer.names.updateNameTable(varfont, {"wght": 450})
+
+
+@pytest.mark.parametrize("emptyStat", [False, True])
+@pytest.mark.parametrize(
+    "limits, expected, isNonRIBBI",
+    [
+        (
+            {"wght": 400, "wdth": 100},
+            {
+                (1, 3, 1, 0x409): "Test Variable Font",
+                (2, 3, 1, 0x409): "Regular",
+                (6, 3, 1, 0x409): "TestVariableFont-Regular",
+            },
+            False,
+        ),
+        (
+            {"wght": 700, "wdth": 100},
+            {
+                (1, 3, 1, 0x409): "Test Variable Font",
+                (2, 3, 1, 0x409): "Bold",
+                (6, 3, 1, 0x409): "TestVariableFont-Bold",
+            },
+            False,
+        ),
+        (
+            {"wght": 900, "wdth": 79},
+            {
+                (1, 3, 1, 0x409): "Test Variable Font Condensed Black",
+                (2, 3, 1, 0x409): "Regular",
+                (6, 3, 1, 0x409): "TestVariableFont-CondensedBlack",
+                (16, 3, 1, 0x409): "Test Variable Font",
+                (17, 3, 1, 0x409): "Condensed Black",
+            },
+            True,
+        ),
+    ],
+)
+def test_updateNameTable_fvar_fallback(
+    varfont, limits, expected, isNonRIBBI, emptyStat
+):
+    if emptyStat:
+        varfont["STAT"].table.AxisValueArray = None
+    else:
+        del varfont["STAT"]
+    instancer.names.updateNameTable(varfont, limits)
+    _test_name_records(varfont, expected, isNonRIBBI)
+
+
+def test_updateNameTable_fvar_fallback_partial_instancing(varfont):
+    del varfont["STAT"]
+    instancer.names.updateNameTable(varfont, {"wght": 900})
+    name = varfont["name"]
+    assert name.getName(1, 3, 1, 0x409).toUnicode() == "Test Variable Font Black"
+    assert name.getName(17, 3, 1, 0x409).toUnicode() == "Black"
+
+
+@pytest.mark.parametrize("modifier", ["Extra", "Semi", "Demi", "Ultra"])
+def test_updateNameTable_fvar_fallback_weight_modifier_not_ribbi(varfont, modifier):
+    del varfont["STAT"]
+    instance = next(
+        i
+        for i in varfont["fvar"].instances
+        if i.coordinates == {"wght": 900, "wdth": 100}
+    )
+    fullName = f"{modifier} Bold"
+    varfont["name"].setName(fullName, instance.subfamilyNameID, 3, 1, 0x409)
+    instancer.names.updateNameTable(varfont, {"wght": 900, "wdth": 100})
+    name = varfont["name"]
+    assert name.getName(1, 3, 1, 0x409).toUnicode() == f"Test Variable Font {fullName}"
+    assert name.getName(2, 3, 1, 0x409).toUnicode() == "Regular"
+    assert name.getName(17, 3, 1, 0x409).toUnicode() == fullName
 
 
 @pytest.mark.parametrize(

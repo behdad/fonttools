@@ -73,8 +73,10 @@ def pruningUnusedNames(varfont):
 def updateNameTable(varfont, axisLimits):
     """Update instatiated variable font's name table using STAT AxisValues.
 
-    Raises ValueError if the STAT table is missing or an Axis Value table is
-    missing for requested axis locations.
+    Raises ValueError if an Axis Value table is missing for requested axis
+    locations. If the STAT table is missing or has no Axis Values, the name of
+    the fvar named instance at the new default location is used instead, and
+    ValueError is raised if there is no such instance.
 
     First, collect all STAT AxisValues that match the new default axis locations
     (excluding "elided" ones); concatenate the strings in design axis order,
@@ -104,11 +106,8 @@ def updateNameTable(varfont, axisLimits):
     """
     from . import AxisLimits, axisValuesFromAxisLimits
 
-    if "STAT" not in varfont:
-        raise ValueError("Cannot update name table since there is no STAT table.")
-    stat = varfont["STAT"].table
-    if not stat.AxisValueArray:
-        raise ValueError("Cannot update name table since there are no STAT Axis Values")
+    stat = varfont["STAT"].table if "STAT" in varfont else None
+    hasStatValues = stat is not None and bool(stat.AxisValueArray)
     fvar = varfont["fvar"]
 
     # The updated name table will reflect the new 'zero origin' of the font.
@@ -119,6 +118,11 @@ def updateNameTable(varfont, axisLimits):
     fvarDefaults = {a.axisTag: a.defaultValue for a in fvar.axes}
     defaultAxisCoords = AxisLimits({**fvarDefaults, **partialDefaults})
     assert all(v.minimum == v.maximum for v in defaultAxisCoords.values())
+
+    if not hasStatValues:
+        # Fall back to the fvar named instance at the new default location.
+        _updateNameRecordsFromFvar(varfont, defaultAxisCoords.pinnedLocation())
+        return
 
     axisValueTables = axisValuesFromAxisLimits(stat, defaultAxisCoords)
     checkAxisValuesExist(stat, axisValueTables, defaultAxisCoords.pinnedLocation())
@@ -251,6 +255,64 @@ def _updateNameRecords(varfont, axisValues):
             typoSubFamilyName,
             *platform,
         )
+
+
+def _updateNameRecordsFromFvar(varfont, location):
+    # No usable STAT: split the name of the fvar instance at 'location' into
+    # RIBBI and non-RIBBI particles and feed them to the same style updater.
+    instance = next(
+        (
+            i
+            for i in varfont["fvar"].instances
+            if all(i.coordinates.get(tag) == value for tag, value in location.items())
+        ),
+        None,
+    )
+    if instance is None:
+        coords = ", ".join(f"'{k}': {v}" for k, v in location.items())
+        raise ValueError(
+            "Cannot update name table since there is no STAT table with matching "
+            f"Axis Values and no fvar instance at {{{coords}}}"
+        )
+
+    nametable = varfont["name"]
+    getName = nametable.getName
+    platforms = set((r.platformID, r.platEncID, r.langID) for r in nametable.names)
+    for platform in platforms:
+        instanceName = getName(instance.subfamilyNameID, *platform)
+        if not all(getName(i, *platform) for i in (1, 2)) or instanceName is None:
+            continue
+
+        particles = _splitInstanceName(instanceName.toUnicode())
+        ribbi = [p for p in particles if p in _RIBBI_PARTICLES]
+        nonRibbi = [p for p in particles if p not in _RIBBI_PARTICLES]
+        _updateNameTableStyleRecords(
+            varfont,
+            " ".join(nonRibbi),
+            " ".join(ribbi),
+            " ".join(particles) if nonRibbi else None,
+            *platform,
+        )
+
+
+_RIBBI_PARTICLES = ("Regular", "Italic", "Bold")
+_WEIGHT_MODIFIERS = ("Extra", "Semi", "Demi", "Ultra")
+
+
+def _splitInstanceName(name):
+    # Keep weight modifiers attached to the following word so that "Extra Bold"
+    # is not mistaken for "Extra" + the RIBBI "Bold".
+    particles = []
+    pending = []
+    for word in name.split():
+        if word in _WEIGHT_MODIFIERS:
+            pending.append(word)
+            continue
+        particles.append(" ".join(pending + [word]))
+        pending = []
+    if pending:
+        particles.append(" ".join(pending))
+    return particles
 
 
 def _isRibbi(nametable, nameID):
