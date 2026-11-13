@@ -212,7 +212,11 @@ def _glyphs_to_quadratic(glyphs, max_err, reverse_direction, stats, all_quadrati
             new_segments = _segments_to_quadratic(
                 segments, max_err, stats, all_quadratic
             )
-            if all_quadratic or new_segments != segments:
+            # 'segments' is a tuple of (tag, tuple of points), while
+            # 'new_segments' is a list of (tag, list of points).
+            if all_quadratic or [(t, tuple(p)) for t, p in new_segments] != list(
+                segments
+            ):
                 glyphs_modified = True
             segments = new_segments
         new_segments_by_location.append(segments)
