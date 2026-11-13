@@ -1529,6 +1529,10 @@ class Parser(object):
         ):
             log.warning(f"Unregistered axis tag {axisTag} should be uppercase.")
         axisOrder = self.expect_number_()
+        if not 0 <= axisOrder <= 0xFFFF:
+            raise FeatureLibError(
+                "Axis ordering must be between 0 and 65535", self.cur_token_location_
+            )
         self.expect_symbol_("{")
         while self.next_token_ != "}" or self.cur_comments_:
             self.advance_lexer_()

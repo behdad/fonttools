@@ -1599,6 +1599,14 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(da.axisOrder, 0)
         self.assertEqual(da.names[0].string, "Optical Size")
 
+    def test_stat_design_axis_bad_ordering(self):  # STAT DesignAxis
+        self.assertRaisesRegex(
+            FeatureLibError,
+            "Axis ordering must be between 0 and 65535",
+            self.parse,
+            "table STAT { DesignAxis opsz -1 " '{name "Optical Size";}; } STAT;',
+        )
+
     def test_stat_axis_value_format1(self):  # STAT AxisValue
         doc = self.parse(
             "table STAT { DesignAxis opsz 0 "
