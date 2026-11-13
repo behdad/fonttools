@@ -6,14 +6,11 @@ and clipping. SciPy is optional and is imported only when reverse() is called.
 """
 
 from bisect import bisect_right
-import logging
 import math
 
 from fontTools.varLib.models import normalizeValue, piecewiseLinearMap
 from fontTools.varLib.varStore import NO_VARIATION_INDEX
 from .map import _denormalize, map as map_forward
-
-log = logging.getLogger(__name__)
 
 
 def _segment(value, items):
@@ -104,7 +101,8 @@ class _AvarMapping:
                 for region, delta in zip(data.VarRegionIndex, data.Item[inner]):
                     deltas[i, region] += delta / 16384
             # Ignore unused regions and axes ignored by OpenType supportScalar.
-            for r in np.flatnonzero(np.any(deltas, axis=0)):
+            used = np.any(deltas, axis=0)
+            for r in np.flatnonzero(used):
                 self.supports.append(
                     [
                         (i, a.StartCoord, a.PeakCoord, a.EndCoord)
@@ -116,7 +114,7 @@ class _AvarMapping:
                         and not (a.StartCoord < 0 < a.EndCoord)
                     ]
                 )
-            self.deltas = deltas[:, np.any(deltas, axis=0)]
+            self.deltas = deltas[:, used]
 
     def __call__(self, x):
         np = self.np
@@ -157,10 +155,18 @@ def reverse(
 ):
     """Approximately invert an avar (version 1 or 2) mapping.
 
-    ``location`` specifies post-avar targets; omitted axes target normalized
-    zero. Input and output units follow avar.map: by default both are in
-    pre-fvar units, with ``inputNormalized`` and ``outputNormalized`` selecting
-    normalized target and result coordinates, respectively.
+    Returns ``(location, error)``, where ``error`` is the residual output error
+    in normalized coordinates (Euclidean distance over the scored axes). It is
+    about one F2Dot14 unit or less when the search reaches the target, and
+    larger when the target is unreachable. Returns None for a font without
+    fvar.
+
+    ``location`` specifies post-avar targets. An omitted axis targets
+    normalized zero while its input is free; when its input is pinned or hidden
+    it is left unconstrained, since the caller cannot move it. Input and output
+    units follow avar.map: by default both are in pre-fvar units, with
+    ``inputNormalized`` and ``outputNormalized`` selecting normalized target and
+    result coordinates, respectively.
 
     Hidden axes are held at their fvar defaults. ``pinned`` optionally maps
     other axis tags to fixed PRE-FVAR values, regardless of the unit flags.
@@ -170,11 +176,10 @@ def reverse(
     Output error is Euclidean distance in normalized coordinates. Among
     candidates within ``tolerance`` of the smallest error found, prefer fewer
     non-default input axes, then smaller error and normalized distance from
-    default.
-    Sparsity is sought by greedy elimination, not exhaustive subset search.
-    Multiple starts reduce local-minimum sensitivity but do not guarantee a
-    global optimum. An unreachable target returns an approximation and logs
-    its residual. Returns None for a font without fvar. Requires SciPy.
+    default. ``tolerance`` is only this sparsity budget, not an accuracy
+    threshold. Sparsity is sought by greedy elimination, not exhaustive subset
+    search. Multiple starts reduce local-minimum sensitivity but do not
+    guarantee a global optimum. Requires SciPy.
     """
     if "fvar" not in font:
         return None
@@ -205,7 +210,7 @@ def reverse(
             raise ValueError(f"Pinned coordinate for {tag} must be in [{lo}, {hi}]")
 
     if not axes:
-        return {}
+        return {}, 0.0
     try:
         import numpy as np
         from scipy.optimize import least_squares
@@ -229,8 +234,9 @@ def reverse(
     )
     # Optimize in normalized input space so weight, optical size, etc. have
     # comparable scales. A default at an endpoint makes its domain one-sided.
-    # Hidden, pinned, and collapsed axes are eliminated from the optimization;
-    # their OUTPUT coordinates still participate in the residual.
+    # Hidden, pinned, and collapsed axes are eliminated from the optimization.
+    # Their outputs are scored only when named in `location`; otherwise they
+    # are unconstrained, since the caller cannot choose a fixed axis's output.
     lower = np.array([-1.0 if a.minValue < a.defaultValue else 0.0 for a in axes])
     upper = np.array([1.0 if a.defaultValue < a.maxValue else 0.0 for a in axes])
     fixed = np.array(
@@ -242,6 +248,13 @@ def reverse(
     free = [
         i for i, a in enumerate(axes) if a.axisTag not in pinned and lower[i] < upper[i]
     ]
+    # Score an axis's output error only when the caller named it in `location`
+    # or its input is free. Omitted pinned/hidden/collapsed outputs stay
+    # unconstrained: fixing the input must not force error into the objective.
+    free_set = set(free)
+    scored = np.array(
+        [a.axisTag in location or i in free_set for i, a in enumerate(axes)]
+    )
     candidates = {}
 
     def add(x):
@@ -256,9 +269,8 @@ def reverse(
             }
             user.update(pinned)
             actual = map_forward(font, user, outputNormalized=True, dropZeroes=False)
-            error = np.linalg.norm(
-                [actual[tag] - t for tag, t in zip(mapping.tags, target)]
-            )
+            deviation = np.array([actual[tag] for tag in mapping.tags]) - target
+            error = np.linalg.norm(deviation[scored])
             candidates[key] = (error, x)
 
     def best():
@@ -294,10 +306,11 @@ def reverse(
                 raw, jac = mapping(x)
                 if clipped:
                     residual = np.clip(raw, -1, 1) - target
-                    active = (raw >= -1) & (raw <= 1)
+                    active = (raw >= -1) & (raw <= 1) & scored
+                    residual = np.where(scored, residual, 0)
                 else:
                     residual = raw - target
-                    active = ~(
+                    active = scored & ~(
                         ((target == 1) & (raw > 1)) | ((target == -1) & (raw < -1))
                     )
                     residual = np.where(active, residual, 0)
@@ -344,7 +357,9 @@ def reverse(
             if i in free:
                 x[i] = _inverseSegment(peak, mapping.segments[i], lower[i], upper[i])
         peaks.append(x)
-    peaks.sort(key=lambda x: np.linalg.norm(np.clip(mapping(x)[0], -1, 1) - target))
+    peaks.sort(
+        key=lambda x: np.linalg.norm((np.clip(mapping(x)[0], -1, 1) - target)[scored])
+    )
     seeds.extend(peaks[:8])
     # A few reproducible random starts explore other basins without enumerating
     # the exponentially many region cells. This is not a global-optimum proof.
@@ -377,17 +392,21 @@ def reverse(
             break
 
     # Refine against the rounded forward map on a small coordinate stencil.
-    # One tick in intermediate space is scaled by the local avar1 slope.
-    # Differentiating the rounded avar2 mapper mostly gives zero derivatives
-    # because of quantization. Instead, use its exact residual only to rank
-    # nearby candidates after the continuous solver has located a good basin.
+    # One tick in intermediate space is divided by the local avar1 slope, so
+    # the intermediate coordinate moves about one F2Dot14 unit even where the
+    # segment compresses (slope < 1). Differentiating the rounded avar2 mapper
+    # mostly gives zero derivatives because of quantization. Instead, use its
+    # exact residual only to rank nearby candidates once the continuous solver
+    # has located a good basin.
     for _ in range(3):
         error, x = best()
         if error == 0:
             break
         for i in free:
             _, slope = _segment(x[i], mapping.segments[i])
-            step = 1 / (16384 * max(abs(slope), 1))
+            if not slope:
+                continue  # A flat segment cannot move the intermediate value.
+            step = 1 / (16384 * abs(slope))
             for offset in (-1, -0.5, 0.5, 1):
                 trial = x.copy()
                 trial[i] = np.clip(x[i] + offset * step, lower[i], upper[i])
@@ -396,10 +415,6 @@ def reverse(
             break
 
     error, x = best()
-    if error > tolerance:
-        log.warning(
-            "Reverse avar mapping is approximate: normalized residual %g", error
-        )
     result = {}
     for axis, value in zip(axes, x):
         if dropZeroes and value == 0:
@@ -410,4 +425,4 @@ def reverse(
             if outputNormalized
             else pinned.get(tag, float(_denormalize(value, triples[tag])))
         )
-    return result
+    return result, float(error)

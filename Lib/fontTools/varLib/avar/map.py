@@ -24,8 +24,9 @@ def map(
     inputNormalized is True. dropZeroes omits normalized-zero OUTPUT axes,
     independently of the input/output units and the avar version.
 
-    With ``reverse=True``, see :func:`fontTools.varLib.avar.reverse.reverse`.
-    ``pinned`` is only supported for reverse mapping.
+    With ``reverse=True``, return the ``(location, error)`` tuple from
+    :func:`fontTools.varLib.avar.reverse.reverse`; otherwise return the mapped
+    location. ``pinned`` is only supported for reverse mapping.
     """
     if reverse:
         from .reverse import reverse as reverse_map
@@ -79,10 +80,9 @@ def main(args=None):
 
     from fontTools.ttLib import TTFont
     import argparse
+    import sys
 
     if args is None:
-        import sys
-
         args = sys.argv[1:]
 
     parser = argparse.ArgumentParser(
@@ -112,7 +112,8 @@ def main(args=None):
         "--reverse",
         action="store_true",
         help="Find pre-fvar inputs for post-avar targets (requires scipy). "
-        "Hidden axes stay at default; omitted target axes mean normalized zero.",
+        "Hidden axes stay at default; an omitted free axis targets normalized "
+        "zero, while pinned or hidden output axes are left unconstrained.",
     )
     parser.add_argument(
         "--pin",
@@ -122,11 +123,19 @@ def main(args=None):
         help="Fix an input axis in pre-fvar units when reversing; omit the value "
         "to pin at default. Repeat for more axes.",
     )
+    parser.add_argument(
+        "--show-error",
+        action="store_true",
+        help="When reversing, print the normalized residual error to stderr.",
+    )
 
     options = parser.parse_args(args)
 
     if options.pin and not options.reverse:
         parser.error("--pin requires --reverse")
+
+    if options.show_error and not options.reverse:
+        parser.error("--show-error requires --reverse")
 
     if options.font.endswith(".designspace"):
         from .build import build
@@ -173,9 +182,15 @@ def main(args=None):
                 else None
             ),
         )
-    except (ValueError, ImportError) as e:
+    except ValueError as e:
         parser.error(str(e))
+    except ImportError as e:
+        sys.exit(str(e))
     assert mapped is not None
+    if options.reverse:
+        mapped, error = mapped
+        if options.show_error:
+            print(f"normalized residual error: {error:g}", file=sys.stderr)
 
     for tag in mapped:
         v = mapped[tag]

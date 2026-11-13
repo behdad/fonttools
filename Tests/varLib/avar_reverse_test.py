@@ -59,14 +59,12 @@ def assert_target(font, result, target, atol=1 / 16384):
 
 def test_identity_units_and_omitted_targets():
     font = make_font()
-    result = reverse(font, {"aaaa": 0.4}, inputNormalized=True, dropZeroes=True)
+    result, _ = reverse(font, {"aaaa": 0.4}, inputNormalized=True, dropZeroes=True)
     assert result == pytest.approx({"aaaa": 600})
-    assert reverse(font, {"aaaa": 600}, outputNormalized=True) == pytest.approx(
-        {"aaaa": 0.4, "bbbb": 0, "cccc": 0}
-    )
-    assert map_avar(
-        font, {"aaaa": 0.4}, reverse=True, inputNormalized=True
-    ) == pytest.approx({"aaaa": 600, "bbbb": 400, "cccc": 400})
+    normalized, _ = reverse(font, {"aaaa": 600}, outputNormalized=True)
+    assert normalized == pytest.approx({"aaaa": 0.4, "bbbb": 0, "cccc": 0})
+    mapped, _ = map_avar(font, {"aaaa": 0.4}, reverse=True, inputNormalized=True)
+    assert mapped == pytest.approx({"aaaa": 600, "bbbb": 400, "cccc": 400})
 
 
 @pytest.mark.parametrize(
@@ -81,7 +79,7 @@ def test_avar1(segment, target, expected):
     font = make_font(("aaaa",))
     font["avar"] = newTable("avar")
     font["avar"].segments = {"aaaa": segment}
-    result = reverse(font, {"aaaa": target}, inputNormalized=True)
+    result, _ = reverse(font, {"aaaa": target}, inputNormalized=True)
     assert_target(font, result, {"aaaa": target})
     assert result["aaaa"] == pytest.approx(expected, abs=0.05)
 
@@ -90,14 +88,14 @@ def test_hidden_inputs_stay_default_but_outputs_can_change():
     font = make_font(("aaaa", "bbbb"), hidden=("bbbb",))
     add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [1]})
     target = {"aaaa": 0.5, "bbbb": 0.5}
-    result = reverse(font, target, inputNormalized=True)
+    result, _ = reverse(font, target, inputNormalized=True)
     assert result["bbbb"] == 400
     assert_target(font, result, target)
 
 
 def test_pins_use_pre_fvar_units_with_normalized_flags():
     font = make_font(("aaaa", "bbbb"))
-    result = reverse(
+    result, _ = reverse(
         font,
         {"aaaa": 0.25, "bbbb": 0.5},
         inputNormalized=True,
@@ -105,13 +103,15 @@ def test_pins_use_pre_fvar_units_with_normalized_flags():
         pinned={"aaaa": 525},
     )
     assert result == pytest.approx({"aaaa": 0.25, "bbbb": 0.5})
-    result = reverse(font, {}, inputNormalized=True, pinned={"aaaa": 525, "bbbb": 400})
+    result, _ = reverse(
+        font, {}, inputNormalized=True, pinned={"aaaa": 525, "bbbb": 400}
+    )
     assert result == {"aaaa": 525, "bbbb": 400}
 
 
 def test_pin_none_means_default_including_hidden_axes():
     font = make_font(hidden=("cccc",))
-    result = reverse(
+    result, _ = reverse(
         font,
         {"bbbb": 0.5},
         inputNormalized=True,
@@ -120,14 +120,42 @@ def test_pin_none_means_default_including_hidden_axes():
     assert result == pytest.approx({"aaaa": 400, "bbbb": 650, "cccc": 400})
 
 
-def test_nearest_unreachable_target(caplog):
-    # With the hidden input fixed, outputs lie on (x, x). The projection of
-    # (1, 0) onto this line is (1/2, 1/2), not (1, 0) or the default.
+def test_hidden_output_is_unconstrained():
+    # bbbb is hidden (input fixed) and omitted from the target, so its coupled
+    # output does not pull the solution: aaaa reaches its target exactly.
     font = make_font(("aaaa", "bbbb"), hidden=("bbbb",))
     add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [1]})
-    result = reverse(font, {"aaaa": 1}, inputNormalized=True)
-    assert result == pytest.approx({"aaaa": 650, "bbbb": 400}, abs=0.04)
-    assert "normalized residual" in caplog.text
+    result, error = reverse(
+        font, {"aaaa": 1}, inputNormalized=True, outputNormalized=True
+    )
+    assert result["aaaa"] == pytest.approx(1, abs=1 / 16384)
+    assert error == pytest.approx(0, abs=1 / 16384)
+
+
+def test_pinned_coupled_output_not_scored():
+    # Pinning bbbb, whose output is coupled to aaaa, must not drag the free
+    # axis: aaaa still reaches its target exactly and the error stays zero.
+    font = make_font(("aaaa", "bbbb"))
+    add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [0.8]})
+    result, error = reverse(
+        font,
+        {"aaaa": 0.5},
+        inputNormalized=True,
+        outputNormalized=True,
+        pinned={"bbbb": None},
+    )
+    assert result["aaaa"] == pytest.approx(0.5, abs=1 / 16384)
+    assert error == pytest.approx(0, abs=1 / 16384)
+
+
+def test_unreachable_target_returns_error():
+    # aaaa's output saturates at 0.5, so a normalized target of 1 is
+    # unreachable; reverse() reports the residual as the returned error.
+    font = make_font(("aaaa",))
+    add_avar2(font, [{"aaaa": (0, 1, 1)}], {"aaaa": [-0.5]})
+    result, error = reverse(font, {"aaaa": 1}, inputNormalized=True)
+    assert result["aaaa"] == pytest.approx(900, abs=1)
+    assert error == pytest.approx(0.5, abs=0.01)
 
 
 def test_cross_axis_product_roundtrip():
@@ -139,7 +167,7 @@ def test_cross_axis_product_roundtrip():
     )
     source = {"aaaa": 600, "bbbb": 700, "cccc": 400}
     target = forward(font, source)
-    result = reverse(font, target, inputNormalized=True)
+    result, _ = reverse(font, target, inputNormalized=True)
     assert result["cccc"] == 400
     assert_target(font, result, target)
 
@@ -151,7 +179,7 @@ def test_multistart_escapes_zero_product_gradient():
         [{"aaaa": (0, 1, 1), "bbbb": (0, 1, 1)}],
         {"cccc": [1.5]},
     )
-    result = reverse(font, {"cccc": 1}, inputNormalized=True)
+    result, _ = reverse(font, {"cccc": 1}, inputNormalized=True)
     # min 2*x^2 + (1.5*x^2 - 1)^2 occurs at x = sqrt(2)/3.
     expected = 400 + 500 * np.sqrt(2) / 3
     assert result["aaaa"] == pytest.approx(expected, abs=0.1)
@@ -168,10 +196,10 @@ def test_prefers_one_nondefault_axis_over_two():
         {"aaaa": [-1, 0], "bbbb": [0, -1], "cccc": [1, 1]},
     )
     target = {"cccc": 0.75}
-    result = reverse(font, target, inputNormalized=True)
+    result, _ = reverse(font, target, inputNormalized=True)
     assert sum(value != 400 for value in result.values()) == 1
     assert_target(font, result, target)
-    pinned = reverse(font, target, inputNormalized=True, pinned={"aaaa": 400})
+    pinned, _ = reverse(font, target, inputNormalized=True, pinned={"aaaa": 400})
     assert pinned == pytest.approx({"aaaa": 400, "bbbb": 775, "cccc": 400}, abs=0.04)
 
 
@@ -183,7 +211,7 @@ def test_clipping_and_saturation(target):
         [{"aaaa": (-1, -1, 0)}, {"aaaa": (0, 1, 1)}],
         {"aaaa": [-1, 1]},
     )
-    result = reverse(font, {"aaaa": target}, inputNormalized=True)
+    result, _ = reverse(font, {"aaaa": target}, inputNormalized=True)
     assert_target(font, result, {"aaaa": target})
 
 
@@ -223,7 +251,7 @@ def test_jacobian_at_shared_tent_boundary():
 def test_degenerate_and_one_sided_axes():
     font = make_font(("aaaa", "bbbb"), positive=("aaaa",))
     font["fvar"].axes[1].minValue = font["fvar"].axes[1].maxValue = 400
-    result = reverse(font, {"aaaa": -0.5, "bbbb": 1}, inputNormalized=True)
+    result, _ = reverse(font, {"aaaa": -0.5, "bbbb": 1}, inputNormalized=True)
     assert result == {"aaaa": 400, "bbbb": 400}
 
 
@@ -238,7 +266,7 @@ def test_varstore_index_variants(variant):
     else:
         avar.table.VarIdxMap = builder.buildDeltaSetIndexMap([0, 0])
     target = forward(font, {"aaaa": 550, "bbbb": 650})
-    result = reverse(font, target, inputNormalized=True)
+    result, _ = reverse(font, target, inputNormalized=True)
     assert_target(font, result, target)
 
 
@@ -248,7 +276,7 @@ def test_real_avar2_roundtrip():
     source = {"wght": 650, "wdth": 85, "opsz": 24}
     target = forward(font, source)
     before = {tag: dict(seg) for tag, seg in font["avar"].segments.items()}
-    result = reverse(font, target, inputNormalized=True, dropZeroes=True)
+    result, _ = reverse(font, target, inputNormalized=True, dropZeroes=True)
     assert_target(font, result, target, atol=2 / 16384)
     assert len(result) <= len(source)
     assert font["avar"].segments == before
@@ -340,3 +368,21 @@ def test_cli_invalid_pin(tmp_path, pin):
     font.save(path)
     with pytest.raises(SystemExit, match="2"):
         main(["--reverse", "-i", "--pin", pin, str(path), "aaaa=0"])
+
+
+def test_cli_show_error(tmp_path, capsys):
+    # aaaa's output saturates at 0.5, so a target of 1 is unreachable and the
+    # residual is reported on stderr while stdout stays coordinates-only.
+    font = make_font(("aaaa",))
+    add_avar2(font, [{"aaaa": (0, 1, 1)}], {"aaaa": [-0.5]})
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    main(["--reverse", "-i", "--show-error", str(path), "aaaa=1"])
+    captured = capsys.readouterr()
+    assert captured.out.startswith("aaaa=")
+    assert "residual error" in captured.err
+
+
+def test_cli_show_error_requires_reverse():
+    with pytest.raises(SystemExit, match="2"):
+        main(["--show-error", "font.ttf", "aaaa=0"])
