@@ -6,7 +6,19 @@ libdir = os.path.join(
 )
 sys.path.insert(0, libdir)
 
-from fontTools.cffLib import TopDict, PrivateDict, CharStrings, CFFFontSet
+from fontTools.cffLib import (
+    TopDict,
+    PrivateDict,
+    CharStrings,
+    CFFFontSet,
+    IndexedStrings,
+    packEncoding0,
+    packEncoding1,
+    parseEncoding0,
+    parseEncoding1,
+    parseEncodingSupplement,
+    readCard8,
+)
 from fontTools.misc.testTools import parseXML, DataFilesHandler
 from fontTools.ttLib import TTFont
 import copy
@@ -166,6 +178,61 @@ class CffLibTest(DataFilesHandler):
         topDict2 = font2["CFF "].cff.topDictIndex[0]
         self.assertEqual(topDict2.Encoding[32], "space")
 
+    def test_topDict_set_Encoding_multiply_encoded(self):
+        ttx_path = self.getpath("TestOTF.ttx")
+        font = TTFont(recalcBBoxes=False, recalcTimestamp=False)
+        font.importXML(ttx_path)
+
+        topDict = font["CFF "].cff[0]
+        encoding = [".notdef"] * 256
+        encoding[0x20] = "space"
+        encoding[0x2E] = "period"
+        encoding[0x85] = "ellipsis"
+        encoding[0xA0] = "space"
+        encoding[0xC9] = "ellipsis"
+        topDict.Encoding = encoding
+
+        self.temp_dir()
+        save_path = os.path.join(self.tempdir, "TestOTF.otf")
+        font.save(save_path)
+
+        font2 = TTFont(save_path)
+        topDict2 = font2["CFF "].cff.topDictIndex[0]
+        self.assertEqual(topDict2.Encoding, encoding)
+
+    def test_pack_Encoding_supplement(self):
+        charset = [".notdef", "X", "A", "B", "C"]
+        encoding = [".notdef"] * 256
+        encoding[0x00] = "B"
+        encoding[0x41] = "A"
+        encoding[0x42] = "B"
+        encoding[0x43] = "C"
+        encoding[0x61] = "A"
+        encoding[0xC1] = "A"
+        for fmt, pack, parse in (
+            (0, packEncoding0, parseEncoding0),
+            (1, packEncoding1, parseEncoding1),
+        ):
+            with self.subTest(fmt=fmt):
+                strings = IndexedStrings()
+                file = BytesIO(pack(charset, encoding, strings))
+                self.assertEqual(readCard8(file), fmt | 0x80)
+                decoded = parse(charset, file)
+                parseEncodingSupplement(file, decoded, strings)
+                self.assertEqual(decoded, encoding)
+
+    def test_pack_Encoding_duplicate_notdef(self):
+        charset = [".notdef", "A", ".notdef"]
+        encoding = [".notdef"] * 256
+        encoding[0x41] = "A"
+        for pack, parse in (
+            (packEncoding0, parseEncoding0),
+            (packEncoding1, parseEncoding1),
+        ):
+            file = BytesIO(pack(charset, encoding, IndexedStrings()))
+            readCard8(file)
+            self.assertEqual(parse(charset, file), encoding)
+
     def test_topDict_delattr(self):
         font = TTFont(
             self.getpath("LinLibertine_RBI.otf"),
@@ -273,6 +340,20 @@ class CffLibTest(DataFilesHandler):
             topDict = cff[0]
             self.assertEqual(topDict.Encoding[9], "space")
             self.assertEqual(topDict.Encoding[32], "space")
+
+    def test_writing_supplement_encoding(self):
+        cff_path = self.getpath("TestSupplementEncoding.cff")
+        with open(cff_path, "rb") as fontfile:
+            cff = CFFFontSet()
+            cff.decompile(fontfile, TTFont())
+            encoding = cff[0].Encoding
+            data = BytesIO()
+            cff.compile(data, TTFont())
+
+        data.seek(0)
+        cff2 = CFFFontSet()
+        cff2.decompile(data, TTFont())
+        self.assertEqual(cff2[0].Encoding, encoding)
 
     def test_non_ascii_font_name_round_trip(self):
         font = TTFont(self.getpath("LinLibertine_RBI.otf"))

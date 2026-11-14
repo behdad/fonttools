@@ -1783,13 +1783,38 @@ def parseEncoding1(charset, file):
     return encoding
 
 
-def packEncoding0(charset, encoding, strings):
-    fmt = 0
+def _encodingCodes(charset, encoding):
+    """Map each encoded glyph name to the code stored in the base Encoding
+    table, and list the other codes of multiply-encoded glyphs, which go in
+    the Encoding supplement.
+
+    The base table gets the lowest nonzero code: code 0 also stands for
+    unencoded glyphs there, so it is only used for glyphs that have no other
+    code."""
     m = {}
-    for code in range(len(encoding)):
+    for code in [*range(1, len(encoding)), 0]:
         name = encoding[code]
         if name != ".notdef":
-            m[name] = code
+            m.setdefault(name, code)
+    glyphs = set(charset[1:])
+    supplement = [
+        (code, name)
+        for code, name in enumerate(encoding)
+        if name in glyphs and m.get(name, code) != code
+    ]
+    return m, supplement
+
+
+def packEncodingSupplement(supplement, strings):
+    data = [packCard8(len(supplement))]
+    for code, name in supplement:
+        data.append(packCard8(code) + packCard16(strings.getSID(name)))
+    return bytesjoin(data)
+
+
+def packEncoding0(charset, encoding, strings):
+    fmt = 0
+    m, supplement = _encodingCodes(charset, encoding)
     codes = []
     for name in charset[1:]:
         code = m.get(name)
@@ -1798,21 +1823,21 @@ def packEncoding0(charset, encoding, strings):
     while codes and codes[-1] is None:
         codes.pop()
 
+    if supplement:
+        fmt |= 0x80
     data = [packCard8(fmt), packCard8(len(codes))]
     for code in codes:
         if code is None:
             code = 0
         data.append(packCard8(code))
+    if supplement:
+        data.append(packEncodingSupplement(supplement, strings))
     return bytesjoin(data)
 
 
 def packEncoding1(charset, encoding, strings):
     fmt = 1
-    m = {}
-    for code in range(len(encoding)):
-        name = encoding[code]
-        if name != ".notdef":
-            m[name] = code
+    m, supplement = _encodingCodes(charset, encoding)
     ranges = []
     first = None
     end = 0
@@ -1832,11 +1857,15 @@ def packEncoding1(charset, encoding, strings):
     while ranges and ranges[-1][0] == -1:
         ranges.pop()
 
+    if supplement:
+        fmt |= 0x80
     data = [packCard8(fmt), packCard8(len(ranges))]
     for first, nLeft in ranges:
         if first == -1:  # unencoded
             first = 0
         data.append(packCard8(first) + packCard8(nLeft))
+    if supplement:
+        data.append(packEncodingSupplement(supplement, strings))
     return bytesjoin(data)
 
 
