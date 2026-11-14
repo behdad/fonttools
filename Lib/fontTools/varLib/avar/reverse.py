@@ -8,6 +8,7 @@ and clipping. SciPy is optional and is imported only when reverse() is called.
 from bisect import bisect_right
 import math
 
+from fontTools.misc.fixedTools import floatToFixedToStr, nearestMultipleShortestRepr
 from fontTools.varLib.models import normalizeValue, piecewiseLinearMap
 from fontTools.varLib.varStore import NO_VARIATION_INDEX
 from .map import _denormalize, map as map_forward, _load_font, _parse_coordinates
@@ -572,11 +573,19 @@ def main(args=None):
     if options.show_error:
         print(f"normalized residual error: {error:g}", file=sys.stderr)
 
-    for tag in mapped:
-        v = mapped[tag]
-        v = int(v) if v == int(v) else v
-        # Reverse results need enough digits to survive a forward round trip.
-        print(f"{tag}={v:.17g}")
+    # Print at the font's F2Dot14 resolution so values read cleanly (0.6 rather
+    # than 0.59997) while still round-tripping through the forward map.
+    triples = {
+        a.axisTag: (a.minValue, a.defaultValue, a.maxValue) for a in font["fvar"].axes
+    }
+    for tag, v in mapped.items():
+        if options.o:
+            s = floatToFixedToStr(v, 14)
+        else:
+            lo, default, hi = triples[tag]
+            step = (hi - default if v >= default else default - lo) / 16384
+            s = nearestMultipleShortestRepr(v, step) if step else str(float(v))
+        print(f"{tag}={s}")
 
 
 if __name__ == "__main__":

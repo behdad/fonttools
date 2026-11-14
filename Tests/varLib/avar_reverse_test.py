@@ -362,7 +362,8 @@ def test_cli_reverse_and_pins(tmp_path, capsys, pin):
         for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
     }
     assert set(result) == {"aaaa"}
-    assert_target(font, result, {"aaaa": 1 / 3}, atol=1e-14)
+    # CLI output is rounded to F2Dot14, so the round trip holds to ~one unit.
+    assert_target(font, result, {"aaaa": 1 / 3}, atol=2 / 16384)
 
 
 def test_cli_map_rejects_reverse_flags():
@@ -466,3 +467,14 @@ def test_cli_pin_comma_separated(tmp_path, capsys):
     assert result["aaaa"] == pytest.approx(0.3, abs=1 / 16384)
     assert result["bbbb"] == pytest.approx(0.5, abs=1 / 16384)
     assert "cccc" not in result
+
+
+def test_cli_output_rounds_to_f2dot14(tmp_path, capsys):
+    # Output reads cleanly at F2Dot14 resolution, not as solver noise.
+    font = make_font(("aaaa",))
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    main(["-i", "-o", str(path), "aaaa=0.6"])
+    assert capsys.readouterr().out.strip() == "aaaa=0.6"
+    main(["-i", str(path), "aaaa=0.6"])  # user units: norm 0.6 -> wght 700
+    assert capsys.readouterr().out.strip() == "aaaa=700.0"

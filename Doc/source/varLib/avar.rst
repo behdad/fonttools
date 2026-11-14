@@ -41,7 +41,8 @@ axes among solutions within one F2Dot14 unit of the best error found. A greedy
 search seeks sparse solutions; neither global optimality nor the minimum
 possible number of axes is guaranteed. Unreachable targets return an
 approximation; ``--show-error`` prints the residual, and the Python API returns
-it as the ``error`` alongside the location. The font is not modified.
+it as the ``error`` alongside the location. CLI output is rounded to the font's
+F2Dot14 resolution for readability. The font is not modified.
 
 .. automodule:: fontTools.varLib.avar.reverse
    :members: reverse
