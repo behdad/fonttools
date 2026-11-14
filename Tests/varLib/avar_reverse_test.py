@@ -10,8 +10,8 @@ from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.tables import otTables
 from fontTools.ttLib.tables._f_v_a_r import Axis
 from fontTools.varLib import builder
-from fontTools.varLib.avar.map import main, map as map_avar
-from fontTools.varLib.avar.reverse import _AvarMapping, reverse
+from fontTools.varLib.avar.map import map as map_avar, main as map_main
+from fontTools.varLib.avar.reverse import _AvarMapping, reverse, main
 
 
 def make_font(tags=("aaaa", "bbbb", "cccc"), hidden=(), positive=()):
@@ -317,7 +317,7 @@ def test_cli_reverse_and_pins(tmp_path, capsys, pin):
     font = make_font(("aaaa", "bbbb"))
     path = tmp_path / "test.ttf"
     font.save(path)
-    main(["--reverse", "-i", "--pin", pin, str(path), "aaaa=0.3333333333333333"])
+    main(["-i", "--pin", pin, str(path), "aaaa=0.3333333333333333"])
     result = {
         k: float(v)
         for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
@@ -326,9 +326,11 @@ def test_cli_reverse_and_pins(tmp_path, capsys, pin):
     assert_target(font, result, {"aaaa": 1 / 3}, atol=1e-14)
 
 
-def test_cli_pins_require_reverse():
-    with pytest.raises(SystemExit, match="2"):
-        main(["--pin", "aaaa=400", "font.ttf", "aaaa=0"])
+def test_cli_map_rejects_reverse_flags():
+    # The reverse options moved to `fonttools varLib.avar.reverse`.
+    for argv in (["--reverse", "font.ttf", "wght=0"], ["--pin", "wght=0", "font.ttf"]):
+        with pytest.raises(SystemExit, match="2"):
+            map_main(argv)
 
 
 @pytest.mark.parametrize("input_normalized", [False, True])
@@ -341,7 +343,7 @@ def test_cli_reverse_empty_location(
     add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [0.5]})
     path = tmp_path / "test.ttf"
     font.save(path)
-    flags = ["--reverse"]
+    flags = []
     if input_normalized:
         flags.append("-i")
     if output_normalized:
@@ -367,7 +369,7 @@ def test_cli_invalid_pin(tmp_path, pin):
     path = tmp_path / "test.ttf"
     font.save(path)
     with pytest.raises(SystemExit, match="2"):
-        main(["--reverse", "-i", "--pin", pin, str(path), "aaaa=0"])
+        main(["-i", "--pin", pin, str(path), "aaaa=0"])
 
 
 def test_cli_show_error(tmp_path, capsys):
@@ -377,12 +379,7 @@ def test_cli_show_error(tmp_path, capsys):
     add_avar2(font, [{"aaaa": (0, 1, 1)}], {"aaaa": [-0.5]})
     path = tmp_path / "test.ttf"
     font.save(path)
-    main(["--reverse", "-i", "--show-error", str(path), "aaaa=1"])
+    main(["-i", "--show-error", str(path), "aaaa=1"])
     captured = capsys.readouterr()
     assert captured.out.startswith("aaaa=")
     assert "residual error" in captured.err
-
-
-def test_cli_show_error_requires_reverse():
-    with pytest.raises(SystemExit, match="2"):
-        main(["--show-error", "font.ttf", "aaaa=0"])

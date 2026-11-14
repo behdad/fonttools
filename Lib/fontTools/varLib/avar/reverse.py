@@ -10,7 +10,7 @@ import math
 
 from fontTools.varLib.models import normalizeValue, piecewiseLinearMap
 from fontTools.varLib.varStore import NO_VARIATION_INDEX
-from .map import _denormalize, map as map_forward
+from .map import _denormalize, map as map_forward, _load_font, _parse_coordinates
 
 
 def _segment(value, items):
@@ -426,3 +426,90 @@ def reverse(
             else pinned.get(tag, float(_denormalize(value, triples[tag])))
         )
     return result, float(error)
+
+
+def main(args=None):
+    """Find pre-fvar inputs that produce post-avar targets (invert `avar`)."""
+
+    import argparse
+    import sys
+
+    if args is None:
+        args = sys.argv[1:]
+
+    parser = argparse.ArgumentParser(
+        "fonttools varLib.avar.reverse",
+        description="Find pre-fvar inputs for post-avar targets (requires scipy).",
+    )
+    parser.add_argument("font", metavar="varfont.ttf", help="Variable-font file.")
+    parser.add_argument(
+        "coords",
+        metavar="[AXIS=value...]",
+        help="Post-avar targets, e.g. 'wght=0.6 wdth=-0.2'. Omit for the default "
+        "location. An omitted free axis targets normalized zero.",
+        nargs="*",
+        default=[],
+    )
+    parser.add_argument(
+        "-f", action="store_true", help="Do not omit axes at default location."
+    )
+    parser.add_argument(
+        "-i", action="store_true", help="Target coordinates are normalized (-1..1)."
+    )
+    parser.add_argument(
+        "-o", action="store_true", help="Output coordinates as normalized (-1..1)."
+    )
+    parser.add_argument(
+        "--pin",
+        action="append",
+        default=[],
+        metavar="AXIS[=value]",
+        help="Fix an input axis in pre-fvar units; omit the value to pin at its "
+        "fvar default. Repeat for more axes.",
+    )
+    parser.add_argument(
+        "--show-error",
+        action="store_true",
+        help="Print the normalized residual error to stderr.",
+    )
+
+    options = parser.parse_args(args)
+
+    font = _load_font(parser, options.font)
+    location = _parse_coordinates(parser, options.coords)
+    pinned = (
+        _parse_coordinates(parser, options.pin, allow_default=True)
+        if options.pin
+        else None
+    )
+
+    try:
+        result = reverse(
+            font,
+            location,
+            inputNormalized=options.i,
+            outputNormalized=options.o,
+            dropZeroes=not options.f,
+            pinned=pinned,
+        )
+    except ValueError as e:
+        parser.error(str(e))
+    except ImportError as e:
+        sys.exit(str(e))
+
+    assert result is not None
+    mapped, error = result
+    if options.show_error:
+        print(f"normalized residual error: {error:g}", file=sys.stderr)
+
+    for tag in mapped:
+        v = mapped[tag]
+        v = int(v) if v == int(v) else v
+        # Reverse results need enough digits to survive a forward round trip.
+        print(f"{tag}={v:.17g}")
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())
