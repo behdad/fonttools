@@ -151,6 +151,7 @@ def reverse(
     outputNormalized=False,
     dropZeroes=False,
     pinned=None,
+    vary=None,
     tolerance=1 / 16384,
 ):
     """Approximately invert an avar (version 1 or 2) mapping.
@@ -171,6 +172,9 @@ def reverse(
     Hidden axes are held at their fvar defaults. ``pinned`` optionally maps
     other axis tags to fixed PRE-FVAR values, regardless of the unit flags.
     A pinned value of None means the axis's fvar default.
+    ``vary`` optionally restricts the inputs that may move to a set of axis
+    tags, pinning every other axis to its default and overriding hidden flags;
+    by default all non-hidden axes may vary.
     Returned coordinates stay within the fvar ranges.
 
     Output error is Euclidean distance in normalized coordinates. Among
@@ -188,9 +192,17 @@ def reverse(
     axes = font["fvar"].axes
     triples = {a.axisTag: (a.minValue, a.defaultValue, a.maxValue) for a in axes}
     pinned = dict(pinned or {})
-    unknown = sorted((location.keys() | pinned.keys()) - triples.keys())
+    varyTags = None if vary is None else set(vary)
+    named = location.keys() | pinned.keys() | (varyTags or set())
+    unknown = sorted(named - triples.keys())
     if unknown:
         raise ValueError(f"Unknown axis tag(s): {', '.join(unknown)}")
+    if varyTags is not None:
+        conflict = sorted(varyTags & pinned.keys())
+        if conflict:
+            raise ValueError(
+                f"Axis(es) cannot be both varied and pinned: {', '.join(conflict)}"
+            )
     pinned = {
         tag: triples[tag][1] if value is None else value
         for tag, value in pinned.items()
@@ -198,12 +210,21 @@ def reverse(
     for tag, value in location.items():
         if not math.isfinite(value) or (inputNormalized and not -1 <= value <= 1):
             raise ValueError(f"Invalid target coordinate for {tag}: {value}")
-    for axis in axes:
-        tag = axis.axisTag
-        if axis.flags & 1:
-            if tag in pinned and pinned[tag] != axis.defaultValue:
-                raise ValueError(f"Hidden axis {tag} must stay at its default")
-            pinned[tag] = axis.defaultValue
+    if varyTags is None:
+        # By default every non-hidden axis may vary; hidden inputs stay put.
+        for axis in axes:
+            tag = axis.axisTag
+            if axis.flags & 1:
+                if tag in pinned and pinned[tag] != axis.defaultValue:
+                    raise ValueError(f"Hidden axis {tag} must stay at its default")
+                pinned[tag] = axis.defaultValue
+    else:
+        # `vary` is authoritative: pin every unlisted axis (hidden or not) to
+        # its default, so only the named axes may move.
+        for axis in axes:
+            tag = axis.axisTag
+            if tag not in varyTags and tag not in pinned:
+                pinned[tag] = triples[tag][1]
     for tag, value in pinned.items():
         lo, _, hi = triples[tag]
         if not math.isfinite(value) or not lo <= value <= hi:
@@ -428,6 +449,20 @@ def reverse(
     return result, float(error)
 
 
+def _parse_vary(parser, items):
+    """Parse --vary items (comma-separated and/or repeated) into axis tags."""
+    tags = []
+    for item in items:
+        for tag in item.split(","):
+            tag = tag.strip()
+            if not tag or "=" in tag:
+                parser.error(
+                    f"Invalid --vary axis {tag!r}. Expected an axis tag, e.g. wght"
+                )
+            tags.append(tag)
+    return tags
+
+
 def main(args=None):
     """Find pre-fvar inputs that produce post-avar targets (invert `avar`)."""
 
@@ -468,6 +503,15 @@ def main(args=None):
         "fvar default. Repeat for more axes.",
     )
     parser.add_argument(
+        "--vary",
+        action="append",
+        default=[],
+        metavar="AXIS[,AXIS...]",
+        help="Vary only these axes, pinning every other axis to its fvar "
+        "default (overrides hidden flags). Repeat or comma-separate. Default: "
+        "vary all non-hidden axes.",
+    )
+    parser.add_argument(
         "--show-error",
         action="store_true",
         help="Print the normalized residual error to stderr.",
@@ -482,6 +526,7 @@ def main(args=None):
         if options.pin
         else None
     )
+    vary = _parse_vary(parser, options.vary) if options.vary else None
 
     try:
         result = reverse(
@@ -491,6 +536,7 @@ def main(args=None):
             outputNormalized=options.o,
             dropZeroes=not options.f,
             pinned=pinned,
+            vary=vary,
         )
     except ValueError as e:
         parser.error(str(e))

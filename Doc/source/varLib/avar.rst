@@ -22,6 +22,12 @@ axes::
 
     fonttools varLib.avar.reverse -i --pin opsz --pin wdth=100 Font.ttf wght=0.6
 
+By default every non-hidden axis may vary. To restrict the result to a chosen
+set of input axes, use ``--vary`` (comma-separated or repeated); every other
+axis is pinned to its fvar default, overriding hidden flags::
+
+    fonttools varLib.avar.reverse -i --vary wght,wdth,opsz Font.ttf wght=0.6 wdth=-0.2
+
 Reverse mapping requires the optional ``fonttools[avar]`` dependencies.
 It minimizes normalized output error, then prefers fewer non-default input
 axes among solutions within one F2Dot14 unit of the best error found. A greedy

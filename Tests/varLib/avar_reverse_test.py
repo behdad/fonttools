@@ -282,6 +282,43 @@ def test_real_avar2_roundtrip():
     assert font["avar"].segments == before
 
 
+def test_vary_restricts_to_named_axes():
+    path = Path(__file__).parent.parent / "ttLib/tables/data/Amstelvar-avar2.subset.ttf"
+    font = TTFont(path)
+    source = {"wght": 650, "wdth": 85, "opsz": 24}
+    target = forward(font, source)
+    result, _ = reverse(
+        font,
+        target,
+        inputNormalized=True,
+        dropZeroes=True,
+        vary=["wght", "wdth", "opsz"],
+    )
+    assert set(result) <= {"wght", "wdth", "opsz"}
+    assert_target(font, result, target, atol=2 / 16384)
+
+
+def test_vary_can_use_a_hidden_axis():
+    # bbbb is hidden, so by default it is held at its default and the target is
+    # unreachable; listing it in `vary` overrides the flag and reaches it.
+    font = make_font(("aaaa", "bbbb"), hidden=("bbbb",))
+    _, default_error = reverse(
+        font, {"bbbb": 0.5}, inputNormalized=True, outputNormalized=True
+    )
+    assert default_error == pytest.approx(0.5, abs=0.01)
+    result, error = reverse(
+        font, {"bbbb": 0.5}, inputNormalized=True, outputNormalized=True, vary=["bbbb"]
+    )
+    assert result["bbbb"] == pytest.approx(0.5, abs=1 / 16384)
+    assert error == pytest.approx(0, abs=1 / 16384)
+
+
+def test_map_vary_requires_reverse():
+    font = make_font(("aaaa",))
+    with pytest.raises(ValueError, match="vary"):
+        map_avar(font, {"aaaa": 0}, vary=["aaaa"])
+
+
 @pytest.mark.parametrize(
     "location,kwargs,message",
     [
@@ -291,6 +328,8 @@ def test_real_avar2_roundtrip():
         ({"aaaa": 2}, {"inputNormalized": True}, "Invalid target"),
         ({}, {"pinned": {"aaaa": 1000}}, "Pinned coordinate"),
         ({}, {"pinned": {"bbbb": 500}}, "Hidden axis"),
+        ({}, {"vary": ["XXXX"]}, "Unknown axis"),
+        ({}, {"vary": ["aaaa"], "pinned": {"aaaa": 400}}, "both varied and pinned"),
         ({}, {"tolerance": -1}, "tolerance"),
     ],
 )
@@ -383,3 +422,16 @@ def test_cli_show_error(tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out.startswith("aaaa=")
     assert "residual error" in captured.err
+
+
+def test_cli_vary(tmp_path, capsys):
+    # --vary accepts a comma-separated list; unlisted axes stay at default.
+    font = make_font(("aaaa", "bbbb", "cccc"))
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    main(["-i", "-o", "--vary", "aaaa,bbbb", str(path), "aaaa=0.5", "bbbb=0.25"])
+    result = {
+        k: float(v)
+        for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
+    }
+    assert result == pytest.approx({"aaaa": 0.5, "bbbb": 0.25})

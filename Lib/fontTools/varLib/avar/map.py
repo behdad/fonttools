@@ -57,6 +57,7 @@ def map(
     dropZeroes=False,
     reverse=False,
     pinned=None,
+    vary=None,
 ):
     """Map coordinates through avar, or approximately invert it.
 
@@ -66,7 +67,7 @@ def map(
 
     With ``reverse=True``, return the ``(location, error)`` tuple from
     :func:`fontTools.varLib.avar.reverse.reverse`; otherwise return the mapped
-    location. ``pinned`` is only supported for reverse mapping.
+    location. ``pinned`` and ``vary`` are only supported for reverse mapping.
     """
     if reverse:
         from .reverse import reverse as reverse_map
@@ -78,9 +79,12 @@ def map(
             outputNormalized=outputNormalized,
             dropZeroes=dropZeroes,
             pinned=pinned,
+            vary=vary,
         )
     if pinned is not None:
         raise ValueError("Axis pins require reverse mapping")
+    if vary is not None:
+        raise ValueError("Axis vary lists require reverse mapping")
     if "fvar" not in font:
         return None
 
