@@ -451,3 +451,18 @@ def test_cli_roundtrip(tmp_path, capsys):
     }
     assert result == pytest.approx({"aaaa": 0.4, "bbbb": 0.6}, abs=1 / 16384)
     assert "residual error" in captured.err
+
+
+def test_cli_pin_comma_separated(tmp_path, capsys):
+    # --pin accepts a comma-separated list, like --vary (bare tag = default).
+    font = make_font(("aaaa", "bbbb", "cccc"))
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    main(["-i", "-o", "--pin", "bbbb=650,cccc", str(path), "aaaa=0.3"])
+    result = {
+        k: float(v)
+        for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
+    }
+    assert result["aaaa"] == pytest.approx(0.3, abs=1 / 16384)
+    assert result["bbbb"] == pytest.approx(0.5, abs=1 / 16384)
+    assert "cccc" not in result

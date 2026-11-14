@@ -449,17 +449,24 @@ def reverse(
     return result, float(error)
 
 
+def _split_items(items):
+    """Flatten comma-separated and/or repeated CLI items into a list.
+
+    Empty fields (e.g. from a trailing comma) are dropped.
+    """
+    return [
+        field.strip() for item in items for field in item.split(",") if field.strip()
+    ]
+
+
 def _parse_vary(parser, items):
     """Parse --vary items (comma-separated and/or repeated) into axis tags."""
-    tags = []
-    for item in items:
-        for tag in item.split(","):
-            tag = tag.strip()
-            if not tag or "=" in tag:
-                parser.error(
-                    f"Invalid --vary axis {tag!r}. Expected an axis tag, e.g. wght"
-                )
-            tags.append(tag)
+    tags = _split_items(items)
+    for tag in tags:
+        if "=" in tag:
+            parser.error(
+                f"Invalid --vary axis {tag!r}. Expected an axis tag, e.g. wght"
+            )
     return tags
 
 
@@ -500,7 +507,7 @@ def main(args=None):
         default=[],
         metavar="AXIS[=value]",
         help="Fix an input axis in pre-fvar units; omit the value to pin at its "
-        "fvar default. Repeat for more axes.",
+        "fvar default. Repeat or comma-separate for more axes.",
     )
     parser.add_argument(
         "--vary",
@@ -530,7 +537,7 @@ def main(args=None):
     font = _load_font(parser, options.font)
     location = _parse_coordinates(parser, options.coords)
     pinned = (
-        _parse_coordinates(parser, options.pin, allow_default=True)
+        _parse_coordinates(parser, _split_items(options.pin), allow_default=True)
         if options.pin
         else None
     )

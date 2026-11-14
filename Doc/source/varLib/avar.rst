@@ -17,10 +17,10 @@ with a pre-fvar value (independent of ``-i`` and ``-o``)::
 
     fonttools varLib.avar.reverse -i --pin opsz=14 Font.ttf wght=0.6
 
-Omit the value to pin an axis at its fvar default. Repeat ``--pin`` to fix more
-axes::
+Omit the value to pin an axis at its fvar default. Repeat ``--pin`` or
+comma-separate to fix more axes::
 
-    fonttools varLib.avar.reverse -i --pin opsz --pin wdth=100 Font.ttf wght=0.6
+    fonttools varLib.avar.reverse -i --pin opsz,wdth=100 Font.ttf wght=0.6
 
 By default every non-hidden axis may vary. To restrict the result to a chosen
 set of input axes, use ``--vary`` (comma-separated or repeated); every other
