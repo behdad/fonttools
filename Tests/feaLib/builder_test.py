@@ -618,12 +618,19 @@ class BuilderTest(unittest.TestCase):
         self.assertEqual(builder.language_systems, {("latn", "FRA"), ("cyrl", "RUS")})
 
     def test_languagesystem_duplicate(self):
-        self.assertRaisesRegex(
-            FeatureLibError,
-            '"languagesystem cyrl RUS" has already been specified',
-            self.build,
-            "languagesystem cyrl RUS; languagesystem cyrl RUS;",
+        logger = logging.getLogger("fontTools.feaLib.builder")
+        with CapturingLogHandler(logger, "WARNING") as captor:
+            font = self.build(
+                "languagesystem cyrl RUS; languagesystem cyrl RUS;"
+                "feature test { sub A by A.sc; } test;"
+            )
+        captor.assertRegex(
+            '<features>:1:26: "languagesystem cyrl RUS" has already been specified'
         )
+        expected = self.build(
+            "languagesystem cyrl RUS;feature test { sub A by A.sc; } test;"
+        )
+        self.assertEqual(font["GSUB"].compile(font), expected["GSUB"].compile(expected))
 
     def test_languagesystem_none_specified(self):
         builder = Builder(makeTTFont(), (None, None))
