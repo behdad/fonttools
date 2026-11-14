@@ -28,6 +28,13 @@ axis is pinned to its fvar default, overriding hidden flags::
 
     fonttools varLib.avar.reverse -i --vary wght,wdth,opsz Font.ttf wght=0.6 wdth=-0.2
 
+``--roundtrip`` instead treats the coordinates as a pre-fvar source: it
+forward-maps them through avar and then reverses the result, which is handy for
+checking how well a design location survives the round trip (``-i`` then
+applies to the source)::
+
+    fonttools varLib.avar.reverse --roundtrip -o Font.ttf wght=700 wdth=125
+
 Reverse mapping requires the optional ``fonttools[avar]`` dependencies.
 It minimizes normalized output error, then prefers fewer non-default input
 axes among solutions within one F2Dot14 unit of the best error found. A greedy

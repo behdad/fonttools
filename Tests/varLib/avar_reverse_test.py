@@ -435,3 +435,19 @@ def test_cli_vary(tmp_path, capsys):
         for k, v in (line.split("=") for line in capsys.readouterr().out.splitlines())
     }
     assert result == pytest.approx({"aaaa": 0.5, "bbbb": 0.25})
+
+
+def test_cli_roundtrip(tmp_path, capsys):
+    # --roundtrip forward-maps the source, then reverses it back. On this
+    # injective font the normalized inputs come back unchanged.
+    font = make_font(("aaaa", "bbbb"))
+    add_avar2(font, [{"aaaa": (0, 1, 1)}], {"bbbb": [0.5]})
+    path = tmp_path / "test.ttf"
+    font.save(path)
+    main(["-o", "--roundtrip", "--show-error", str(path), "aaaa=600", "bbbb=700"])
+    captured = capsys.readouterr()
+    result = {
+        k: float(v) for k, v in (line.split("=") for line in captured.out.splitlines())
+    }
+    assert result == pytest.approx({"aaaa": 0.4, "bbbb": 0.6}, abs=1 / 16384)
+    assert "residual error" in captured.err

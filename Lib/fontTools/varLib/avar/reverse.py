@@ -516,6 +516,14 @@ def main(args=None):
         action="store_true",
         help="Print the normalized residual error to stderr.",
     )
+    parser.add_argument(
+        "--roundtrip",
+        action="store_true",
+        help="Treat the coordinates as a pre-fvar SOURCE: forward-map them "
+        "through avar, then reverse the result (-i applies to the source). The "
+        "residual is output error, so a non-injective map may return a "
+        "different but equivalent input.",
+    )
 
     options = parser.parse_args(args)
 
@@ -529,10 +537,19 @@ def main(args=None):
     vary = _parse_vary(parser, options.vary) if options.vary else None
 
     try:
+        if options.roundtrip:
+            # Forward-map the source, then reverse the resulting location.
+            location = map_forward(
+                font,
+                location,
+                inputNormalized=options.i,
+                outputNormalized=True,
+                dropZeroes=False,
+            )
         result = reverse(
             font,
             location,
-            inputNormalized=options.i,
+            inputNormalized=options.i or options.roundtrip,
             outputNormalized=options.o,
             dropZeroes=not options.f,
             pinned=pinned,
