@@ -754,6 +754,10 @@ class FontBuilder(object):
 
         Args:
             axes (list): A list of py:class:`.designspaceLib.AxisDescriptor` objects.
+            mappings (list): An optional list of
+                py:class:`.designspaceLib.AxisMappingDescriptor` objects, whose
+                locations are keyed by axis name, to build an 'avar' version 2
+                table.
         """
         from .varLib import _add_avar
 
@@ -761,7 +765,7 @@ class FontBuilder(object):
             raise KeyError("'fvar' table is missing; can't add 'avar'.")
 
         axisTags = [axis.axisTag for axis in self.font["fvar"].axes]
-        axes = OrderedDict(enumerate(axes))  # Only values are used
+        axes = OrderedDict((axis.name, axis) for axis in axes)
         _add_avar(self.font, axes, mappings, axisTags)
 
     def setupGvar(self, variations):

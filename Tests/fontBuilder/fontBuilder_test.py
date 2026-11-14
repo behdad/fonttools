@@ -1,6 +1,6 @@
 import os
 import pytest
-from fontTools.designspaceLib import AxisDescriptor
+from fontTools.designspaceLib import AxisDescriptor, AxisMappingDescriptor
 from fontTools.ttLib import TTFont, newTable
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.t2CharStringPen import T2CharStringPen
@@ -221,6 +221,42 @@ def test_setupGvar_uses_selected_table_family():
     assert "GVAR" in fb.font
     assert "gvar" not in fb.font
     assert not hasattr(fb, "setupGVAR")
+
+
+def test_setupAvar_mappings():
+    fb, _, nameStrings = _setupFontBuilder(True)
+    fb.setupNameTable(nameStrings)
+
+    weight = AxisDescriptor()
+    weight.name = "Weight"
+    weight.tag = "wght"
+    weight.minimum = 100
+    weight.default = 400
+    weight.maximum = 900
+    width = AxisDescriptor()
+    width.name = "Width"
+    width.tag = "wdth"
+    width.minimum = 50
+    width.default = 100
+    width.maximum = 200
+    axes = [weight, width]
+    fb.setupFvar(axes, [])
+
+    # Mapping locations are keyed by axis name, as in designspace documents.
+    mapping = AxisMappingDescriptor(
+        inputLocation={"Weight": 900, "Width": 50},
+        outputLocation={"Weight": 700},
+    )
+    fb.setupAvar(axes, [mapping])
+
+    from fontTools.varLib.avar.map import map as mapLocation
+
+    font = fb.font
+    assert font["avar"].majorVersion == 2
+    assert mapLocation(font, {"wght": 900, "wdth": 50}) == pytest.approx(
+        {"wght": 700, "wdth": 50}, abs=0.1
+    )
+    assert mapLocation(font, {"wght": 900, "wdth": 100}) == {"wght": 900, "wdth": 100}
 
 
 def test_build_cubic_ttf(tmp_path):
