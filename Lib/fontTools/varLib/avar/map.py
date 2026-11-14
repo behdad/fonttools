@@ -8,15 +8,83 @@ def _denormalize(v, triplet):
         return triplet[1] + v * (triplet[1] - triplet[0])
 
 
+def _load_font(parser, fontpath):
+    """Load a variable font, or build one from a designspace, for a CLI."""
+    from fontTools.ttLib import TTFont
+
+    if fontpath.endswith(".designspace"):
+        from .build import build
+
+        font = TTFont()
+        build(font, fontpath)
+        return font
+    font = TTFont(fontpath)
+    if "fvar" not in font:
+        parser.error(f"Font '{fontpath}' does not contain an 'fvar' table.")
+    return font
+
+
+def _parse_coordinates(parser, items, allow_default=False):
+    """Parse ``AXIS=value`` CLI items into a location dict (shared by the CLIs).
+
+    With ``allow_default``, a bare ``AXIS`` maps to ``None`` (the axis default).
+    """
+    location = {}
+    for item in items:
+        tag, sep, value = item.partition("=")
+        if allow_default and tag and not sep:
+            location[tag] = None
+            continue
+        if not sep or not tag or not value:
+            parser.error(
+                f"Invalid coordinate {item!r}. Expected AXIS=value, e.g. wght=500"
+            )
+        try:
+            location[tag] = float(value)
+        except ValueError:
+            parser.error(
+                f"Invalid coordinate value in {item!r}. Expected a number after '='"
+            )
+    return location
+
+
 def map(
-    font, location, *, inputNormalized=False, outputNormalized=False, dropZeroes=False
+    font,
+    location,
+    *,
+    inputNormalized=False,
+    outputNormalized=False,
+    dropZeroes=False,
+    reverse=False,
+    pinned=None,
+    vary=None,
 ):
-    """Map a location through avar, using defaults for omitted input axes.
+    """Map coordinates through avar, or approximately invert it.
 
     Omitted axes use their fvar defaults in user coordinates, or zero when
     inputNormalized is True. dropZeroes omits normalized-zero OUTPUT axes,
     independently of the input/output units and the avar version.
+
+    With ``reverse=True``, return the ``(location, error)`` tuple from
+    :func:`fontTools.varLib.avar.reverse.reverse`; otherwise return the mapped
+    location. ``pinned`` and ``vary`` are only supported for reverse mapping.
     """
+    if reverse:
+        from .reverse import reverse as reverse_map
+
+        return reverse_map(
+            font,
+            location,
+            inputNormalized=inputNormalized,
+            outputNormalized=outputNormalized,
+            dropZeroes=dropZeroes,
+            pinned=pinned,
+            vary=vary,
+        )
+    if pinned is not None:
+        raise ValueError("Axis pins require reverse mapping")
+    if vary is not None:
+        raise ValueError("Axis vary lists require reverse mapping")
     if "fvar" not in font:
         return None
 
@@ -54,17 +122,16 @@ def map(
 def main(args=None):
     """Map variation coordinates through the `avar` table."""
 
-    from fontTools.ttLib import TTFont
     import argparse
+    import sys
 
     if args is None:
-        import sys
-
         args = sys.argv[1:]
 
     parser = argparse.ArgumentParser(
         "fonttools varLib.avar.map",
-        description="Map variation coordinates through the `avar` table.",
+        description="Map variation coordinates through the `avar` table. "
+        "To invert the mapping, see `fonttools varLib.avar.reverse`.",
     )
     parser.add_argument("font", metavar="varfont.ttf", help="Variable-font file.")
     parser.add_argument(
@@ -87,29 +154,8 @@ def main(args=None):
 
     options = parser.parse_args(args)
 
-    if options.font.endswith(".designspace"):
-        from .build import build
-
-        font = TTFont()
-        build(font, options.font)
-    else:
-        font = TTFont(options.font)
-        if "fvar" not in font:
-            parser.error(f"Font '{options.font}' does not contain an 'fvar' table.")
-
-    location = {}
-    for item in options.coords:
-        tag, sep, value = item.partition("=")
-        if not sep or not tag or not value:
-            parser.error(
-                f"Invalid coordinate {item!r}. Expected AXIS=value, e.g. wght=500"
-            )
-        try:
-            location[tag] = float(value)
-        except ValueError:
-            parser.error(
-                f"Invalid coordinate value in {item!r}. Expected a number after '='"
-            )
+    font = _load_font(parser, options.font)
+    location = _parse_coordinates(parser, options.coords)
 
     try:
         mapped = map(

@@ -113,6 +113,9 @@ if with_cython is True or (with_cython is None and has_cython):
     )
 
 extras_require = {
+    # for fontTools.varLib.avar.reverse, to invert axis variation mappings
+    # (no PyPy wheels for scipy; reverse mapping is simply unavailable there)
+    "avar": ["scipy; platform_python_implementation != 'PyPy'"],
     # for fontTools.ufoLib: to read/write UFO fonts (kept for backwards compatibility).
     # NOTE: pyfilesystem2 is no longer maintained though it may still continue to work
     # with fontTools.ufoLib for a while; however we no longer depend on it, and instead
