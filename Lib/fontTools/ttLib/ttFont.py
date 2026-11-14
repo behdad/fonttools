@@ -494,13 +494,12 @@ class TTFont(object):
             from fontTools import version
 
             version = ".".join(version.split(".")[:2])
-            writer.begintag(
-                "ttFont",
-                sfntVersion=repr(tostr(self.sfntVersion))[1:-1],
-                ttLibVersion=version,
-            )
+            versionAttrs = {"ttLibVersion": version}
         else:
-            writer.begintag("ttFont", sfntVersion=repr(tostr(self.sfntVersion))[1:-1])
+            versionAttrs = {}
+        writer.begintag(
+            "ttFont", sfntVersion=repr(tostr(self.sfntVersion))[1:-1], **versionAttrs
+        )
         writer.newline()
 
         # always splitTables if splitGlyphs is enabled
@@ -521,7 +520,7 @@ class TTFont(object):
                 tableWriter = xmlWriter.XMLWriter(
                     tablePath, newlinestr=writer.newlinestr
                 )
-                tableWriter.begintag("ttFont", ttLibVersion=version)
+                tableWriter.begintag("ttFont", **versionAttrs)
                 tableWriter.newline()
                 tableWriter.newline()
                 writer.simpletag(tagToXML(tag), src=os.path.basename(tablePath))

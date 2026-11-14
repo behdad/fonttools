@@ -236,6 +236,24 @@ def test_saveXML_splitGlyphs_for_GLYF(tmp_path):
     assert received == [True]
 
 
+@pytest.mark.parametrize("writeVersion", [True, False])
+@pytest.mark.parametrize("split", ["splitTables", "splitGlyphs"])
+def test_saveXML_split_writeVersion(tmp_path, writeVersion, split):
+    font = TTFont()
+    font.importXML(os.path.join(DATA_DIR, "TestTTF-Regular.ttx"))
+    font.saveXML(tmp_path / "font.ttx", writeVersion=writeVersion, **{split: True})
+
+    # The main file and the table files follow writeVersion.
+    for name in ["font.ttx", "font._h_e_a_d.ttx", "font._g_l_y_f.ttx"]:
+        xml = (tmp_path / name).read_text(encoding="utf-8")
+        assert xml.rstrip().endswith("</ttFont>")
+        assert ("ttLibVersion=" in xml) == writeVersion
+
+    font2 = TTFont()
+    font2.importXML(tmp_path / "font.ttx")
+    assert font2["glyf"]["period"].coordinates == font["glyf"]["period"].coordinates
+
+
 def test_getGlyphOrder_not_true_post_format_1(caplog):
     # https://github.com/fonttools/fonttools/issues/2736
     caplog.set_level("WARNING")
